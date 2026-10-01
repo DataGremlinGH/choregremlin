@@ -16,7 +16,11 @@
   <div class="row g-3 mb-4">
     <div class="col-12 col-md-4">
       <div class="fh-stat-card">
-        <div class="fh-stat-icon fh-stat-gold"><i class="bi bi-cash-stack"></i></div>
+        <div class="fh-stat-icon fh-stat-gold">
+          {% if stat_icons.earned.startswith('emoji:') %}<span style="font-size:1.3rem;">{{ stat_icons.earned[6:] }}</span>
+          {% elif stat_icons.earned.startswith('photo:') %}<img src="/static/{{ stat_icons.earned[6:] }}" alt="" style="width:100%;height:100%;border-radius:10px;object-fit:cover;">
+          {% else %}<i class="bi bi-cash-stack"></i>{% endif %}
+        </div>
         <div class="fh-stat-body">
           <div class="fh-stat-label">Total Earned</div>
           <div class="fh-stat-value text-warning">{{ token_icon|safe }}{{ "%.2f"|format(total_earned) }}</div>
@@ -25,7 +29,11 @@
     </div>
     <div class="col-12 col-md-4">
       <div class="fh-stat-card">
-        <div class="fh-stat-icon fh-stat-green"><i class="bi bi-check2-circle"></i></div>
+        <div class="fh-stat-icon fh-stat-green">
+          {% if stat_icons.chores.startswith('emoji:') %}<span style="font-size:1.3rem;">{{ stat_icons.chores[6:] }}</span>
+          {% elif stat_icons.chores.startswith('photo:') %}<img src="/static/{{ stat_icons.chores[6:] }}" alt="" style="width:100%;height:100%;border-radius:10px;object-fit:cover;">
+          {% else %}<i class="bi bi-check2-circle"></i>{% endif %}
+        </div>
         <div class="fh-stat-body">
           <div class="fh-stat-label">Chores Completed</div>
           <div class="fh-stat-value text-success">{{ chore_count }}</div>
@@ -34,7 +42,11 @@
     </div>
     <div class="col-12 col-md-4">
       <div class="fh-stat-card">
-        <div class="fh-stat-icon fh-stat-cyan"><i class="bi bi-hourglass-split"></i></div>
+        <div class="fh-stat-icon fh-stat-cyan">
+          {% if stat_icons.progress.startswith('emoji:') %}<span style="font-size:1.3rem;">{{ stat_icons.progress[6:] }}</span>
+          {% elif stat_icons.progress.startswith('photo:') %}<img src="/static/{{ stat_icons.progress[6:] }}" alt="" style="width:100%;height:100%;border-radius:10px;object-fit:cover;">
+          {% else %}<i class="bi bi-hourglass-split"></i>{% endif %}
+        </div>
         <div class="fh-stat-body">
           <div class="fh-stat-label">In Progress Now</div>
           <div class="fh-stat-value text-info">{{ active_logs|length }}</div>

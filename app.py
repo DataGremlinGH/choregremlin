@@ -415,9 +415,15 @@ def dashboard():
     total_earned = db_module.get_total_earned(month)
     chore_count = db_module.get_chore_count(month)
     active_logs = db_module.get_active_logs()
+    stat_icons = {
+        'earned': db_module.get_setting('stat_icon_earned', ''),
+        'chores': db_module.get_setting('stat_icon_chores', ''),
+        'progress': db_module.get_setting('stat_icon_progress', ''),
+    }
     return render_template('dashboard.html', children=children, earnings=earnings,
                            total_earned=total_earned, chore_count=chore_count,
-                           active_logs=active_logs, selected_month=month)
+                           active_logs=active_logs, selected_month=month,
+                           stat_icons=stat_icons)
 
 
 @app.route('/family')
@@ -1162,6 +1168,17 @@ def settings():
         db_module.set_setting('theme_color', theme_color)
         db_module.set_setting('brightness_mode', brightness_mode)
         db_module.set_setting('auto_update_enabled', auto_update)
+        # Stat icon customization
+        for stat_key in ['stat_icon_earned', 'stat_icon_chores', 'stat_icon_progress']:
+            emoji_val = request.form.get(f'{stat_key}_emoji', '').strip()
+            if emoji_val:
+                db_module.set_setting(stat_key, f'emoji:{emoji_val}')
+            else:
+                photo = request.files.get(f'{stat_key}_photo')
+                if photo and photo.filename:
+                    photo_path = save_photo(photo, prefix=stat_key)
+                    if photo_path:
+                        db_module.set_setting(stat_key, f'photo:{photo_path}')
         wallpaper = request.files.get('wallpaper')
         if wallpaper and wallpaper.filename:
             wp_path = save_wallpaper(wallpaper)
@@ -1182,10 +1199,16 @@ def settings():
     wallpaper = db_module.get_setting('wallpaper', '')
     auto_update = db_module.get_setting('auto_update_enabled', '1')
     retention_stats = db_module.get_retention_stats()
+    stat_icons = {
+        'earned': db_module.get_setting('stat_icon_earned', ''),
+        'chores': db_module.get_setting('stat_icon_chores', ''),
+        'progress': db_module.get_setting('stat_icon_progress', ''),
+    }
     return render_template('settings.html', current_name=current_name,
                            theme_color=theme_color, brightness_mode=brightness_mode,
                            family_logo=family_logo, wallpaper=wallpaper,
-                           auto_update=auto_update, retention_stats=retention_stats)
+                           auto_update=auto_update, retention_stats=retention_stats,
+                           stat_icons=stat_icons)
 
 
 # --- Backup / Restore ---

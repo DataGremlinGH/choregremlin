@@ -89,6 +89,40 @@
           </div>
         </div>
 
+        <hr class="my-4 border-secondary">
+
+        <div class="mb-3">
+          <label class="fh-label"><i class="bi bi-grid-3x3-gap"></i> Dashboard Stat Icons</label>
+          <div class="form-text mb-2">Customize the three stat cards on the dashboard. Enter an emoji or upload a small photo for each.</div>
+          {% set stat_items = [
+            ('earned', 'Total Earned', 'bi-cash-stack'),
+            ('chores', 'Chores Completed', 'bi-check2-circle'),
+            ('progress', 'In Progress Now', 'bi-hourglass-split')
+          ] %}
+          {% for key, label, default_icon in stat_items %}
+          {% set current = stat_icons.get(key, '') %}
+          <div class="mb-3">
+            <label class="fh-label">{{ label }}</label>
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <div class="fh-stat-preview" style="width:48px;height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;background:rgba(26,36,56,0.6);border:1px solid var(--fh-border);flex-shrink:0;">
+                {% if current.startswith('emoji:') %}
+                  <span>{{ current[6:] }}</span>
+                {% elif current.startswith('photo:') %}
+                  <img src="/static/{{ current[6:] }}" alt="" style="width:100%;height:100%;border-radius:10px;object-fit:cover;">
+                {% else %}
+                  <i class="bi {{ default_icon }}"></i>
+                {% endif %}
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <input type="text" name="stat_icon_{{ key }}_emoji" class="form-control fh-input" placeholder="Emoji" maxlength="4" style="width:90px;" value="{{ current[6:] if current.startswith('emoji:') else '' }}">
+                <span class="text-muted small">or</span>
+                <input type="file" name="stat_icon_{{ key }}_photo" accept="image/*" class="form-control fh-input" style="max-width:200px;">
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
         <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-check-lg"></i> Save Settings</button>
       </form>
     </div>
