@@ -97,7 +97,9 @@
         <div class="fh-chore-solo"><i class="bi bi-person-lock"></i> One at a time</div>
         {% endif %}
         {% if is_active %}
-        <div class="fh-chore-badge"><i class="bi bi-hourglass-split"></i> In Progress</div>
+        <div class="fh-chore-active-time" data-started="{% for log in active_logs %}{% if log['chore_id'] == chore['id'] %}{{ log['started_at'] }}{% endif %}{% endfor %}">
+          <i class="bi bi-clock"></i> <span class="fh-timer">0m 0s</span>
+        </div>
         {% else %}
         <button type="submit" class="fh-chore-start">
           <i class="bi bi-play-circle-fill"></i> Start

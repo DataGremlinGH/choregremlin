@@ -20,7 +20,7 @@
 
   function updateTimers() {
     document.querySelectorAll('.fh-timer').forEach(function (el) {
-      var container = el.closest('.fh-active-time');
+      var container = el.closest('[data-started]');
       if (container) {
         var started = container.getAttribute('data-started');
         if (started) el.textContent = fmtElapsed(started);

@@ -560,6 +560,12 @@ body {
   color: var(--fh-gold);
   font-weight: 600;
 }
+.fh-chore-active-time {
+  font-size: 0.8rem;
+  color: var(--fh-gold);
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
 .fh-chore-solo {
   font-size: 0.7rem;
   color: var(--fh-gold);
