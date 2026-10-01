@@ -73,6 +73,13 @@
           <label class="fh-label">Description</label>
           <textarea name="description" class="form-control fh-input" rows="2">{{ chore['description'] or '' }}</textarea>
         </div>
+        <div class="mb-2 mt-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="single_child_only" id="singleChildOnly" value="1" {{ 'checked' if chore['single_child_only'] else '' }}>
+            <label class="form-check-label fh-label mb-0" for="singleChildOnly">One child at a time</label>
+            <div class="text-muted small">When on, only one child can do this chore at once.</div>
+          </div>
+        </div>
         <div class="mb-4 mt-3">
           <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" name="is_active" id="isActive" {{ 'checked' if chore['is_active'] else '' }}>

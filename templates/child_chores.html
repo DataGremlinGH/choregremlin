@@ -93,6 +93,9 @@
         <div class="fh-chore-pay">
           <i class="bi bi-cash"></i> {{ token_icon|safe }}{{ "%.2f"|format(chore['pay_amount']) }}
         </div>
+        {% if chore['single_child_only'] %}
+        <div class="fh-chore-solo"><i class="bi bi-person-lock"></i> One at a time</div>
+        {% endif %}
         {% if is_active %}
         <div class="fh-chore-badge"><i class="bi bi-hourglass-split"></i> In Progress</div>
         {% else %}

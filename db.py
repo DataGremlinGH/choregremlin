@@ -194,6 +194,7 @@ MIGRATIONS = [
     "ALTER TABLE chores ADD COLUMN chore_image TEXT DEFAULT ''",
     "ALTER TABLE chores ADD COLUMN repeat_frequency TEXT NOT NULL DEFAULT 'daily'",
     "ALTER TABLE chores ADD COLUMN due_days TEXT DEFAULT '0,1,2,3,4,5,6'",
+    "ALTER TABLE chores ADD COLUMN single_child_only INTEGER NOT NULL DEFAULT 0",
 ]
 
 
@@ -460,12 +461,13 @@ def get_backup_code_count(user_id):
 # --- Chore helpers ---
 
 def create_chore(name, icon, pay_amount, description='', is_active=1,
-               chore_emoji='', chore_image='', repeat_frequency='daily', due_days='0,1,2,3,4,5,6'):
+               chore_emoji='', chore_image='', repeat_frequency='daily', due_days='0,1,2,3,4,5,6',
+               single_child_only=0):
     db = get_db()
     cursor = db.execute(
-        """INSERT INTO chores (name, icon, pay_amount, description, is_active, chore_emoji, chore_image, repeat_frequency, due_days)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (name, icon, pay_amount, description, is_active, chore_emoji, chore_image, repeat_frequency, due_days)
+        """INSERT INTO chores (name, icon, pay_amount, description, is_active, chore_emoji, chore_image, repeat_frequency, due_days, single_child_only)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (name, icon, pay_amount, description, is_active, chore_emoji, chore_image, repeat_frequency, due_days, single_child_only)
     )
     db.commit()
     return cursor.lastrowid
@@ -485,7 +487,7 @@ def get_chore(chore_id):
 
 def update_chore(chore_id, **fields):
     db = get_db()
-    allowed = {'name', 'icon', 'pay_amount', 'description', 'is_active', 'chore_emoji', 'chore_image', 'repeat_frequency', 'due_days'}
+    allowed = {'name', 'icon', 'pay_amount', 'description', 'is_active', 'chore_emoji', 'chore_image', 'repeat_frequency', 'due_days', 'single_child_only'}
     sets = []
     vals = []
     for k, v in fields.items():
@@ -536,6 +538,15 @@ def get_assigned_chore_ids(user_id):
 
 
 # --- Chore log helpers ---
+
+def is_chore_in_progress_by_others(chore_id, user_id):
+    db = get_db()
+    row = db.execute(
+        "SELECT COUNT(*) as cnt FROM chore_logs WHERE chore_id=? AND status='in_progress' AND user_id!=?",
+        (chore_id, user_id)
+    ).fetchone()
+    return row['cnt'] > 0 if row else False
+
 
 def start_chore(user_id, chore_id):
     db = get_db()

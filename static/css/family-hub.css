@@ -493,14 +493,14 @@ body {
 /* Chore grid */
 .fh-chore-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
 }
 .fh-chore-card {
   background: linear-gradient(135deg, rgba(17, 24, 39, 0.6), rgba(10, 14, 26, 0.8));
   border: 2px solid var(--fh-border);
-  border-radius: 16px;
-  padding: 1.25rem 1rem;
+  border-radius: 14px;
+  padding: 0.875rem 0.75rem;
   text-align: center;
   transition: all 0.25s;
   position: relative;
@@ -516,16 +516,16 @@ body {
 }
 .fh-chore-form { margin: 0; }
 .fh-chore-icon {
-  width: 52px; height: 52px;
-  border-radius: 14px;
+  width: 44px; height: 44px;
+  border-radius: 12px;
   background: var(--fh-accent-10);
   border: 1px solid var(--fh-accent-20);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--fh-cyan);
-  font-size: 1.4rem;
-  margin: 0 auto 0.75rem;
+  font-size: 1.2rem;
+  margin: 0 auto 0.5rem;
 }
 .fh-chore-name {
   font-family: 'Orbitron', sans-serif;
@@ -559,6 +559,26 @@ body {
   font-size: 0.75rem;
   color: var(--fh-gold);
   font-weight: 600;
+}
+.fh-chore-solo {
+  font-size: 0.7rem;
+  color: var(--fh-gold);
+  margin-bottom: 0.5rem;
+}
+
+/* Chore manage card (admin) */
+.fh-chore-manage-card { padding: 0.875rem; }
+.fh-chore-manage-name {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--fh-text);
+  margin-bottom: 0.4rem;
+}
+.fh-chore-manage-card .fh-chore-icon {
+  width: 40px; height: 40px;
+  margin: 0 auto 0.5rem;
+  font-size: 1.1rem;
 }
 
 /* ---- PIN Pad ---- */
@@ -679,7 +699,7 @@ body {
 /* ---- Responsive ---- */
 @media (max-width: 576px) {
   .fh-kid-grid { grid-template-columns: repeat(2, 1fr); gap: 1rem; }
-  .fh-chore-grid { grid-template-columns: repeat(2, 1fr); }
+  .fh-chore-grid { grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
   .fh-kid-photo { width: 72px; height: 72px; }
   .fh-kid-initial { font-size: 1.5rem; }
   .fh-stat-value { font-size: 1.2rem; }

@@ -352,6 +352,8 @@ def child_chores():
         chores = db_module.get_all_chores(active_only=True)
     active_logs = db_module.get_active_logs(child['id'])
     active_ids = {log['chore_id'] for log in active_logs}
+    other_active_ids = {log['chore_id'] for log in db_module.get_active_logs() if log['user_id'] != child['id']}
+    chores = [c for c in chores if not (c['single_child_only'] and c['id'] in other_active_ids)]
     balance = db_module.get_balance(child['id'])
     month_earnings = db_module.get_monthly_earnings(child['id'])
     my_earnings = month_earnings[0] if month_earnings else None
@@ -367,6 +369,9 @@ def kiosk_start_chore(chore_id):
     chore = db_module.get_chore(chore_id)
     if not chore or not chore['is_active']:
         flash('Chore not available.', 'danger')
+        return redirect(url_for('child_chores'))
+    if chore['single_child_only'] and db_module.is_chore_in_progress_by_others(chore_id, child['id']):
+        flash('Someone else is already doing this chore.', 'warning')
         return redirect(url_for('child_chores'))
     db_module.start_chore(child['id'], chore_id)
     flash(f'Started: {chore["name"]}', 'success')
@@ -557,8 +562,10 @@ def add_chore():
     img_file = request.files.get('chore_image')
     if img_file and img_file.filename:
         chore_image = save_photo(img_file, prefix='chore')
+    single_child_only = 1 if request.form.get('single_child_only') else 0
     db_module.create_chore(name, icon, pay, description, chore_emoji=chore_emoji,
-                          chore_image=chore_image, repeat_frequency=repeat_frequency, due_days=due_days)
+                          chore_image=chore_image, repeat_frequency=repeat_frequency, due_days=due_days,
+                          single_child_only=single_child_only)
     chore_id = db_module.get_all_chores(active_only=False)[-1]['id']
     user_ids = request.form.getlist('user_ids')
     if user_ids:
@@ -581,6 +588,7 @@ def edit_chore(chore_id):
         pay = float(request.form.get('pay_amount', 0) or 0)
         description = request.form.get('description', '').strip()
         is_active = 1 if request.form.get('is_active') else 0
+        single_child_only = 1 if request.form.get('single_child_only') else 0
         chore_emoji = request.form.get('chore_emoji', '').strip()
         repeat_frequency = request.form.get('repeat_frequency', 'daily').strip()
         due_days = ','.join(request.form.getlist('due_days'))
@@ -588,7 +596,8 @@ def edit_chore(chore_id):
             due_days = '0,1,2,3,4,5,6'
         updates = dict(name=name, icon=icon, pay_amount=pay, description=description,
                       is_active=is_active, chore_emoji=chore_emoji,
-                      repeat_frequency=repeat_frequency, due_days=due_days)
+                      repeat_frequency=repeat_frequency, due_days=due_days,
+                      single_child_only=single_child_only)
         img_file = request.files.get('chore_image')
         if img_file and img_file.filename:
             updates['chore_image'] = save_photo(img_file, prefix='chore')

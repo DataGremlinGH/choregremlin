@@ -13,9 +13,9 @@
 
   <div class="row g-3">
     {% for chore in chores %}
-    <div class="col-12 col-sm-6 col-lg-4">
-      <div class="fh-card fh-chore-manage-card {{ '' if chore['is_active'] else 'fh-card-inactive' }}">
-        <div class="d-flex align-items-start justify-content-between mb-2">
+    <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
+      <div class="fh-card fh-chore-manage-card text-center {{ '' if chore['is_active'] else 'fh-card-inactive' }}">
+        <div class="d-flex align-items-start justify-content-center mb-2">
           <div class="fh-chore-icon">
             {% if chore['chore_image'] %}
             <img src="/static/{{ chore['chore_image'] }}" alt="" style="width:32px;height:32px;border-radius:8px;">
@@ -25,13 +25,16 @@
             <i class="bi {{ chore['icon'] }}"></i>
             {% endif %}
           </div>
-          <span class="badge bg-success">{{ token_icon|safe }}{{ "%.2f"|format(chore['pay_amount']) }}</span>
         </div>
+        <span class="badge bg-success mb-2 d-inline-block">{{ token_icon|safe }}{{ "%.2f"|format(chore['pay_amount']) }}</span>
         <h6 class="fh-chore-manage-name">{{ chore['name'] }}</h6>
         {% if chore['description'] %}<p class="text-muted small mb-2">{{ chore['description'] }}</p>{% endif %}
-        <div class="mb-2">
+        <div class="mb-2 d-flex flex-wrap justify-content-center gap-1">
           {% set freq_labels = {'daily': 'Daily', 'weekly': 'Weekly', 'monthly': 'Monthly', 'weekdays': 'Weekdays', 'weekends': 'Weekends', 'once': 'One-time', 'custom': 'Custom'} %}
           <span class="badge bg-secondary">{{ freq_labels.get(chore['repeat_frequency'], chore['repeat_frequency']) }}</span>
+          {% if chore['single_child_only'] %}
+          <span class="badge bg-warning text-dark"><i class="bi bi-person-lock"></i> One at a time</span>
+          {% endif %}
           {% if chore['repeat_frequency'] == 'custom' and chore['due_days'] %}
           {% set day_names = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
           {% for d in chore['due_days'].split(',') %}
@@ -39,7 +42,7 @@
           {% endfor %}
           {% endif %}
         </div>
-        <div class="d-flex gap-2 mt-2">
+        <div class="d-flex gap-2 mt-2 justify-content-center">
           <a href="{{ url_for('edit_chore', chore_id=chore['id']) }}" class="btn btn-sm fh-btn-outline flex-fill">
             <i class="bi bi-pencil"></i> Edit
           </a>
@@ -53,7 +56,7 @@
           {% endif %}
         </div>
         {% if assignments.get(chore['id']) %}
-        <div class="mt-2">
+        <div class="mt-2 text-center">
           <span class="text-muted small">Assigned to: </span>
           {% for uid in assignments[chore['id']] %}
             {% for c in children if c['id'] == uid %}
@@ -154,6 +157,13 @@
           <div class="mt-3">
             <label class="fh-label">Description (optional)</label>
             <textarea name="description" class="form-control fh-input" rows="2"></textarea>
+          </div>
+          <div class="mt-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="single_child_only" id="singleChildOnly" value="1">
+              <label class="form-check-label fh-label mb-0" for="singleChildOnly">One child at a time</label>
+              <div class="text-muted small">When on, only one child can do this chore at once.</div>
+            </div>
           </div>
           <div class="mt-3">
             <label class="fh-label">Assign to Kids (optional)</label>
