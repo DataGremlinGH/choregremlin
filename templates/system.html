@@ -1,0 +1,157 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav %}
+{% block title %}System - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='system') }}
+<div class="container-fluid px-3 px-lg-4 py-4" style="max-width:800px;">
+  <h2 class="fh-page-title mb-4"><i class="bi bi-cpu"></i> System Info</h2>
+
+  <!-- Service Status -->
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-shield-fill-check"></i> Service Status</div>
+    <div class="fh-card-body">
+      <div class="fh-sys-status-grid">
+        <div class="fh-sys-status-item">
+          <div class="fh-sys-status-label">ChoreGremlin Service</div>
+          <div class="fh-sys-status-value">
+            {% if sys_info['service_status'] == 'active' %}
+            <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Running</span>
+            {% elif sys_info['service_status'] == 'inactive' %}
+            <span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> Stopped</span>
+            {% else %}
+            <span class="badge bg-secondary">{{ sys_info['service_status'] }}</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="fh-sys-status-item">
+          <div class="fh-sys-status-label">Auto-Update Timer</div>
+          <div class="fh-sys-status-value">
+            {% if sys_info['update_timer'] == 'active' %}
+            <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Active</span>
+            {% else %}
+            <span class="badge bg-secondary">{{ sys_info['update_timer'] }}</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="fh-sys-status-item">
+          <div class="fh-sys-status-label">Cleanup Timer</div>
+          <div class="fh-sys-status-value">
+            {% if sys_info['cleanup_timer'] == 'active' %}
+            <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Active</span>
+            {% else %}
+            <span class="badge bg-secondary">{{ sys_info['cleanup_timer'] }}</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="mt-3 d-flex gap-2 flex-wrap">
+        <form method="POST" action="{{ url_for('check_update') }}">
+          <button class="btn fh-btn-cyan btn-sm"><i class="bi bi-arrow-repeat"></i> Check for Updates</button>
+        </form>
+        <form method="POST" action="{{ url_for('trigger_cleanup') }}" onsubmit="return confirm('Run cleanup now? This deletes records older than 1 year.')">
+          <button class="btn fh-btn-outline btn-sm"><i class="bi bi-trash3"></i> Run Cleanup Now</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- System Resources -->
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-md-6">
+      <div class="fh-card">
+        <div class="fh-card-header"><i class="bi bi-thermometer-half"></i> CPU Temperature</div>
+        <div class="fh-card-body">
+          <div class="fh-sys-metric">{{ sys_info['cpu_temp'] }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6">
+      <div class="fh-card">
+        <div class="fh-card-header"><i class="bi bi-clock-history"></i> Uptime</div>
+        <div class="fh-card-body">
+          <div class="fh-sys-metric">{{ sys_info['uptime'] }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6">
+      <div class="fh-card">
+        <div class="fh-card-header"><i class="bi bi-bar-chart-fill"></i> System Load</div>
+        <div class="fh-card-body">
+          <div class="fh-sys-metric-sm">{{ sys_info['load'] }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6">
+      <div class="fh-card">
+        <div class="fh-card-header"><i class="bi bi-memory"></i> Memory</div>
+        <div class="fh-card-body">
+          <div class="fh-sys-metric-sm">
+            Used: {{ sys_info['mem_used'] }} / Total: {{ sys_info['mem_total'] }}
+            <span class="text-muted">(Free: {{ sys_info['mem_free'] }})</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Disk Usage -->
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-device-hdd"></i> Disk Usage</div>
+    <div class="fh-card-body">
+      <div class="fh-sys-disk-bar-wrap">
+        <div class="fh-sys-disk-bar" style="width: {{ sys_info['disk_pct']|replace('%','') }}%;"></div>
+      </div>
+      <div class="d-flex justify-content-between mt-2">
+        <span class="text-muted">{{ sys_info['disk_used'] }} used of {{ sys_info['disk_total'] }}</span>
+        <span class="text-muted">{{ sys_info['disk_free'] }} free ({{ sys_info['disk_pct'] }})</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Retention -->
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-database"></i> Data Retention</div>
+    <div class="fh-card-body">
+      <p class="text-muted mb-3">Chore records are automatically kept for <strong class="text-cyan">1 year</strong> and then deleted by the daily cleanup timer.</p>
+      <div class="fh-retention-grid">
+        <div class="fh-retention-item">
+          <div class="fh-retention-count">{{ retention_stats['total_logs'] }}</div>
+          <div class="fh-retention-label">Chore Logs</div>
+        </div>
+        <div class="fh-retention-item">
+          <div class="fh-retention-count">{{ retention_stats['total_payments'] }}</div>
+          <div class="fh-retention-label">Payments</div>
+        </div>
+        <div class="fh-retention-item">
+          <div class="fh-retention-count">{{ retention_stats['total_activity'] }}</div>
+          <div class="fh-retention-label">Activity Entries</div>
+        </div>
+        <div class="fh-retention-item">
+          <div class="fh-retention-count text-warning">{{ retention_stats['old_logs'] }}</div>
+          <div class="fh-retention-label">Older than 1 Year</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Network Quick Info -->
+  <div class="fh-card">
+    <div class="fh-card-header"><i class="bi bi-wifi"></i> Network</div>
+    <div class="fh-card-body">
+      <div class="fh-net-info-grid">
+        <div class="fh-net-info-item">
+          <div class="fh-net-info-label">IP Address</div>
+          <div class="fh-net-info-value">{{ net['ip'] }}</div>
+        </div>
+        <div class="fh-net-info-item">
+          <div class="fh-net-info-label">Hostname</div>
+          <div class="fh-net-info-value">{{ sys_info['hostname'] }}</div>
+        </div>
+      </div>
+      <div class="mt-2">
+        <a href="{{ url_for('network_settings') }}" class="fh-link fh-link-sm">Full network settings <i class="bi bi-arrow-right"></i></a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

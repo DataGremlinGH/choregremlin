@@ -1,0 +1,16 @@
+# ChoreGremlin Configuration Example
+# Copy this file to .env and adjust as needed.
+# On Raspberry Pi, the installer sets these automatically.
+
+# The port the app listens on (default: 8473)
+PORT=8473
+
+# Secret key for session cookies (auto-generated if not set)
+# SECRET_KEY=change-me-to-a-random-string
+
+# Data directory (defaults to ./instance)
+# Set this to move data to a USB drive or network share
+# CHOREGREMLIN_DATA_DIR=/mnt/usb/choregremlin-data
+
+# Enable debug mode (NOT recommended for production)
+# DEBUG=False

@@ -1,0 +1,221 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav %}
+{% block title %}Chores - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='chores') }}
+<div class="container-fluid px-3 px-lg-4 py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fh-page-title"><i class="bi bi-list-check"></i> Manage Chores</h2>
+    <button class="btn fh-btn-cyan" data-bs-toggle="modal" data-bs-target="#addChoreModal">
+      <i class="bi bi-plus-circle-fill"></i> Add Chore
+    </button>
+  </div>
+
+  <div class="row g-3">
+    {% for chore in chores %}
+    <div class="col-12 col-sm-6 col-lg-4">
+      <div class="fh-card fh-chore-manage-card {{ '' if chore['is_active'] else 'fh-card-inactive' }}">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="fh-chore-icon">
+            {% if chore['chore_image'] %}
+            <img src="/static/{{ chore['chore_image'] }}" alt="" style="width:32px;height:32px;border-radius:8px;">
+            {% elif chore['chore_emoji'] %}
+            <span style="font-size:1.5rem;">{{ chore['chore_emoji'] }}</span>
+            {% else %}
+            <i class="bi {{ chore['icon'] }}"></i>
+            {% endif %}
+          </div>
+          <span class="badge bg-success">{{ token_icon|safe }}{{ "%.2f"|format(chore['pay_amount']) }}</span>
+        </div>
+        <h6 class="fh-chore-manage-name">{{ chore['name'] }}</h6>
+        {% if chore['description'] %}<p class="text-muted small mb-2">{{ chore['description'] }}</p>{% endif %}
+        <div class="mb-2">
+          {% set freq_labels = {'daily': 'Daily', 'weekly': 'Weekly', 'monthly': 'Monthly', 'weekdays': 'Weekdays', 'weekends': 'Weekends', 'once': 'One-time', 'custom': 'Custom'} %}
+          <span class="badge bg-secondary">{{ freq_labels.get(chore['repeat_frequency'], chore['repeat_frequency']) }}</span>
+          {% if chore['repeat_frequency'] == 'custom' and chore['due_days'] %}
+          {% set day_names = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+          {% for d in chore['due_days'].split(',') %}
+          <span class="badge bg-info">{{ day_names[d|int] if d|int < 7 else d }}</span>
+          {% endfor %}
+          {% endif %}
+        </div>
+        <div class="d-flex gap-2 mt-2">
+          <a href="{{ url_for('edit_chore', chore_id=chore['id']) }}" class="btn btn-sm fh-btn-outline flex-fill">
+            <i class="bi bi-pencil"></i> Edit
+          </a>
+          <button class="btn btn-sm fh-btn-outline" data-bs-toggle="modal" data-bs-target="#assignModal{{ chore['id'] }}" title="Assign to kids">
+            <i class="bi bi-people"></i>
+          </button>
+          {% if g.user['role'] == 'admin' %}
+          <form method="POST" action="{{ url_for('delete_chore_route', chore_id=chore['id']) }}" onsubmit="return confirm('Delete chore: {{ chore['name'] }}?')">
+            <button class="btn btn-sm fh-btn-danger" title="Delete"><i class="bi bi-trash"></i></button>
+          </form>
+          {% endif %}
+        </div>
+        {% if assignments.get(chore['id']) %}
+        <div class="mt-2">
+          <span class="text-muted small">Assigned to: </span>
+          {% for uid in assignments[chore['id']] %}
+            {% for c in children if c['id'] == uid %}
+            <span class="badge bg-info">{{ c['name'] }}</span>
+            {% endfor %}
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="col-12 text-center text-muted py-5">
+      <i class="bi bi-list-check fs-1 d-block mb-2"></i>
+      <p>No chores yet. Click "Add Chore" to create one.</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Add Chore Modal -->
+<div class="modal fade" id="addChoreModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title"><i class="bi bi-plus-circle-fill"></i> Add Chore</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('add_chore') }}" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="fh-label">Chore Name</label>
+              <input type="text" name="name" class="form-control fh-input" required placeholder="e.g. Wash dishes">
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Pay Amount ({{ token_plural }})</label>
+              <input type="number" name="pay_amount" class="form-control fh-input" step="0.25" min="0" value="1.00" required>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-6">
+              <label class="fh-label">Icon</label>
+              <select name="icon" class="form-select fh-input">
+                <option value="bi-list-check">Checklist</option>
+                <option value="bi-trash">Trash</option>
+                <option value="bi-droplet">Water/Dishes</option>
+                <option value="bi-house">Housework</option>
+                <option value="bi-basket">Laundry</option>
+                <option value="bi-tree">Yard</option>
+                <option value="bi-cup-hot">Kitchen</option>
+                <option value="bi-cart">Shopping</option>
+                <option value="bi-broom">Sweeping</option>
+                <option value="bi-recycle">Recycling</option>
+                <option value="bi-car-front">Car</option>
+                <option value="bi-shield-check">Safety Check</option>
+                <option value="bi-book">Homework</option>
+                <option value="bi-bed">Bedroom</option>
+                <option value="bi-gear">Maintenance</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Emoji (optional)</label>
+              <input type="text" name="chore_emoji" class="form-control fh-input" placeholder="e.g. &#128519;" maxlength="4">
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-6">
+              <label class="fh-label">Image (optional)</label>
+              <input type="file" name="chore_image" class="form-control fh-input" accept="image/*">
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Repeat</label>
+              <select name="repeat_frequency" class="form-select fh-input" id="repeatFreq">
+                <option value="daily">Every day</option>
+                <option value="weekly">Once a week</option>
+                <option value="monthly">Once a month</option>
+                <option value="weekdays">Weekdays only</option>
+                <option value="weekends">Weekends only</option>
+                <option value="once">One-time</option>
+                <option value="custom">Custom days</option>
+              </select>
+            </div>
+          </div>
+          <div class="row g-3 mt-1" id="dueDaysRow" style="display:none;">
+            <div class="col-12">
+              <label class="fh-label">Days Due</label>
+              <div class="d-flex gap-2 flex-wrap">
+                {% set days = [('0','Mon'),('1','Tue'),('2','Wed'),('3','Thu'),('4','Fri'),('5','Sat'),('6','Sun')] %}
+                {% for val, label in days %}
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="due_days" value="{{ val }}" id="day_{{ val }}" checked>
+                  <label class="form-check-label" for="day_{{ val }}">{{ label }}</label>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="fh-label">Description (optional)</label>
+            <textarea name="description" class="form-control fh-input" rows="2"></textarea>
+          </div>
+          <div class="mt-3">
+            <label class="fh-label">Assign to Kids (optional)</label>
+            <p class="text-muted small">Select which kids should see this chore. If none selected, all kids see it.</p>
+            <div class="d-flex gap-3 flex-wrap">
+              {% for child in children %}
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="user_ids" value="{{ child['id'] }}" id="new_kid_{{ child['id'] }}">
+                <label class="form-check-label" for="new_kid_{{ child['id'] }}">{{ child['name'] }}</label>
+              </div>
+              {% else %}
+              <p class="text-muted">No kids registered yet.</p>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer fh-modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-check-lg"></i> Add</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Assignment Modals -->
+{% for chore in chores %}
+<div class="modal fade" id="assignModal{{ chore['id'] }}" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title"><i class="bi bi-people"></i> Assign: {{ chore['name'] }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('assign_chore_route', chore_id=chore['id']) }}">
+        <div class="modal-body">
+          <p class="text-muted small">Select which kids should see this chore. If none selected, all kids see it.</p>
+          {% for child in children %}
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="user_ids" value="{{ child['id'] }}" id="kid_{{ chore['id'] }}_{{ child['id'] }}"
+              {% if child['id'] in (assignments.get(chore['id']) or []) %}checked{% endif %}>
+            <label class="form-check-label" for="kid_{{ chore['id'] }}_{{ child['id'] }}">
+              {{ child['name'] }}
+            </label>
+          </div>
+          {% else %}
+          <p class="text-muted">No kids registered.</p>
+          {% endfor %}
+        </div>
+        <div class="modal-footer fh-modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-check-lg"></i> Save Assignments</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<script>
+document.getElementById('repeatFreq').addEventListener('change', function() {
+  document.getElementById('dueDaysRow').style.display = (this.value === 'custom') ? '' : 'none';
+});
+</script>
+{% endblock %}

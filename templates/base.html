@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="manifest" href="{{ url_for('manifest') }}">
+  <link rel="icon" href="/static/icons/icon-192.png">
+  <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/css/family-hub.css" rel="stylesheet">
+  <style id="fh-theme-vars">
+    :root {
+      --fh-cyan: {{ theme_color|default('#00d9ff') }};
+      --fh-accent-r: {{ theme_color|default('#00d9ff') }};
+    }
+    {%- if brightness_mode|default('dark') == 'medium' %}
+    :root {
+      --fh-bg: #1a2030;
+      --fh-panel: #243046;
+      --fh-panel-light: #2d3a52;
+      --fh-border: rgba(255,255,255,0.10);
+      --fh-border-hover: rgba(255,255,255,0.20);
+      --fh-text: #e8edf5;
+      --fh-text-muted: #8898b5;
+    }
+    {%- elif brightness_mode|default('dark') == 'light' %}
+    :root {
+      --fh-bg: #eef2f7;
+      --fh-panel: #ffffff;
+      --fh-panel-light: #f3f6fa;
+      --fh-border: rgba(0,0,0,0.10);
+      --fh-border-hover: rgba(0,0,0,0.18);
+      --fh-text: #1a2438;
+      --fh-text-muted: #5a6a85;
+    }
+    {%- endif %}
+  </style>
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+</head>
+<body data-brightness="{{ brightness_mode|default('dark') }}">
+  {% if wallpaper %}
+  <div class="fh-bg" style="background-image: url('/static/{{ wallpaper }}'); background-size: cover; background-position: center; opacity: 0.15;"></div>
+  {% else %}
+  <div class="fh-bg"></div>
+  {% endif %}
+  <div class="fh-bg-grid"></div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="container mt-3 fh-flash-container">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show fh-alert" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block body %}{% endblock %}
+
+  <script src="/static/js/bootstrap.bundle.min.js"></script>
+  <script src="/static/js/family-hub.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

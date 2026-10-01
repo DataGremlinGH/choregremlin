@@ -1,0 +1,10 @@
+[Unit]
+Description=ChoreGremlin Cleanup Timer
+Requires=choregremlin-cleanup.service
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

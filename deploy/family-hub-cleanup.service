@@ -1,0 +1,13 @@
+[Unit]
+Description=ChoreGremlin Chore Retention Cleanup
+After=network.target
+
+[Service]
+Type=oneshot
+User=choregremlin
+Group=choregremlin
+WorkingDirectory=/opt/choregremlin
+ExecStart=/opt/choregremlin/venv/bin/python3 /opt/choregremlin/deploy/cleanup.py
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=choregremlin-cleanup

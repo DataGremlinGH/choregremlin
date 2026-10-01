@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav %}
+{% block title %}2FA Setup - {{ app_name }}{% endblock %}
+{% block body %}
+{% if g.user %}{{ nav(active='security') }}{% endif %}
+<div class="container-fluid px-3 px-lg-4 py-4" style="max-width:500px;">
+  <h2 class="fh-page-title mb-4"><i class="bi bi-shield-lock-fill"></i> Two-Factor Authentication</h2>
+
+  {% if success %}
+  <div class="fh-card mb-3 border-success">
+    <div class="fh-card-header text-success"><i class="bi bi-check-circle-fill"></i> 2FA Enabled!</div>
+    <div class="fh-card-body">
+      <p class="text-muted">Save these backup codes in a safe place. Each can be used once if you lose access to your authenticator app.</p>
+      <div class="fh-backup-codes">
+        {% for code in backup_codes %}
+        <div class="fh-backup-code">{{ code }}</div>
+        {% endfor %}
+      </div>
+      <a href="{{ url_for('security_page') }}" class="btn fh-btn-cyan mt-3"><i class="bi bi-check-lg"></i> Done</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-qr-code"></i> Scan QR Code</div>
+    <div class="fh-card-body text-center">
+      <p class="text-muted mb-3">Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.).</p>
+      <div class="fh-qr-container">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ uri|urlencode }}" alt="2FA QR Code" class="fh-qr-img">
+      </div>
+      <div class="mt-3">
+        <label class="fh-label">Or enter this code manually</label>
+        <div class="fh-totp-secret">{{ secret }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fh-card">
+    <div class="fh-card-header"><i class="bi bi-shield-check"></i> Verify</div>
+    <div class="fh-card-body">
+      <form method="POST" action="{{ url_for('setup_2fa') }}">
+        <input type="hidden" name="secret" value="{{ secret }}">
+        <div class="mb-3">
+          <label class="fh-label">Enter the 6-digit code from your app</label>
+          <input type="text" name="code" class="form-control fh-input" maxlength="6" pattern="[0-9]*" required autofocus style="font-size:1.5rem; text-align:center; letter-spacing:0.3rem;">
+        </div>
+        <button type="submit" class="btn fh-btn-cyan w-100"><i class="bi bi-check-lg"></i> Verify &amp; Enable</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
