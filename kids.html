@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav %}
+{% block title %}Kids - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='kids') }}
+<div class="container-fluid px-3 px-lg-4 py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fh-page-title"><i class="bi bi-people-fill"></i> Manage Kids</h2>
+    <button class="btn fh-btn-cyan" data-bs-toggle="modal" data-bs-target="#addKidModal">
+      <i class="bi bi-person-plus-fill"></i> Add Kid
+    </button>
+  </div>
+
+  <div class="row g-3">
+    {% for child in children %}
+    <div class="col-12 col-sm-6 col-lg-4">
+      <div class="fh-card fh-kid-manage-card">
+        <div class="d-flex align-items-center gap-3 mb-3">
+          <div class="fh-kid-photo" style="width:56px;height:56px;border-color: {{ child['color'] }};">
+            {% if child['photo_path'] %}
+              <img src="/static/{{ child['photo_path'] }}" alt="{{ child['name'] }}">
+            {% else %}
+              <span class="fh-kid-initial" style="font-size:1.5rem;color: {{ child['color'] }};">{{ child['name'][0]|upper }}</span>
+            {% endif %}
+          </div>
+          <div>
+            <div class="fh-kid-manage-name">{{ child['name'] }}</div>
+            <div class="d-flex gap-1 flex-wrap mt-1">
+              {% if child['nickname'] %}<span class="badge bg-secondary">{{ child['nickname'] }}</span>{% endif %}
+              {% if child['pin'] %}
+              <span class="badge bg-info"><i class="bi bi-key-fill"></i> PIN</span>
+              {% else %}
+              <span class="badge bg-secondary">No PIN</span>
+              {% endif %}
+              <span class="badge fh-status-badge fh-status-{{ child['status'] }}">{{ child['status'] }}</span>
+              {% if child['can_do_hard_chores'] %}<span class="badge bg-danger"><i class="bi bi-shield-exclamation"></i> Hard chores</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="d-flex gap-2">
+          <a href="{{ url_for('edit_kid', kid_id=child['id']) }}" class="btn btn-sm fh-btn-outline flex-fill">
+            <i class="bi bi-pencil"></i> Edit
+          </a>
+          {% if g.user['role'] == 'admin' %}
+          <form method="POST" action="{{ url_for('delete_kid', kid_id=child['id']) }}" onsubmit="return confirm('Delete {{ child['name'] }}? All their history will be removed.')">
+            <button class="btn btn-sm fh-btn-danger" title="Delete"><i class="bi bi-trash"></i></button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="col-12 text-center text-muted py-5">
+      <i class="bi bi-people fs-1 d-block mb-2"></i>
+      <p>No kids yet. Click "Add Kid" to get started.</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Add Kid Modal -->
+<div class="modal fade" id="addKidModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title"><i class="bi bi-person-plus-fill"></i> Add Kid</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('add_kid') }}" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="fh-label">First Name</label>
+              <input type="text" name="name" class="form-control fh-input" required>
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Surname</label>
+              <input type="text" name="surname" class="form-control fh-input">
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Nickname (optional)</label>
+              <input type="text" name="nickname" class="form-control fh-input">
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Date of Birth</label>
+              <input type="date" name="date_of_birth" class="form-control fh-input">
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">PIN (optional)</label>
+              <input type="text" name="pin" class="form-control fh-input" maxlength="6" pattern="[0-9]*" placeholder="4-6 digits">
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Theme Colour</label>
+              <input type="color" name="color" class="form-control form-control-color fh-input" value="#00d9ff" style="height:42px;">
+            </div>
+            <div class="col-12">
+              <label class="fh-label">Status</label>
+              <select name="status" class="form-select fh-input">
+                {% for s in ['active', 'holiday', 'sick', 'grounded', 'excused', 'custom'] %}
+                <option value="{{ s }}">{{ s|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="fh-label">Face Photo</label>
+              <input type="file" name="photo" accept="image/*" class="form-control fh-input">
+              <div class="form-text">Photo is shown on the kiosk login screen.</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer fh-modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-check-lg"></i> Add</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

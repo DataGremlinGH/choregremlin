@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}Kiosk - {{ app_name }}{% endblock %}
+{% block body %}
+<div class="fh-kiosk-screen">
+  <div class="text-center mb-4 pt-4">
+    <div class="fh-logo-icon mb-2" style="width:64px;height:64px;font-size:1.8rem;">
+      {% if family_logo %}
+      <img src="/static/{{ family_logo }}" alt="{{ app_name }}" style="width:64px;height:64px;border-radius:14px;object-fit:cover;">
+      {% else %}
+      <i class="bi bi-house-fill"></i>
+      {% endif %}
+    </div>
+    <h1 class="fh-title">{{ app_name }}</h1>
+    <p class="text-muted mb-0">Tap your face to start</p>
+  </div>
+
+  {% if children %}
+  <div class="fh-kid-grid">
+    {% for child in children %}
+    <a href="{{ url_for('kiosk_select', child_id=child['id']) }}" class="fh-kid-tile" style="--kid-color: {{ child['color'] }};">
+      <div class="fh-kid-photo" style="border-color: {{ child['color'] }};">
+        {% if child['photo_path'] %}
+          <img src="/static/{{ child['photo_path'] }}" alt="{{ child['name'] }}">
+        {% else %}
+          <span class="fh-kid-initial" style="color: {{ child['color'] }};">{{ child['name'][0]|upper }}</span>
+        {% endif %}
+      </div>
+      <span class="fh-kid-name">{{ child['name'] }}</span>
+      {% if child['status'] != 'active' %}
+      <span class="fh-kid-status-badge fh-status-{{ child['status'] }}">{{ child['status'] }}</span>
+      {% endif %}
+      {% if child['pin'] %}
+      <span class="fh-kid-pin-badge"><i class="bi bi-key-fill"></i></span>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="text-center text-muted mt-5">
+    <i class="bi bi-people fs-1 d-block mb-2"></i>
+    <p>No children registered yet. An admin needs to add kids first.</p>
+  </div>
+  {% endif %}
+
+  <div class="text-center mt-4 pb-4">
+    <a href="{{ url_for('login') }}" class="btn fh-btn-outline btn-sm">
+      <i class="bi bi-shield-lock me-1"></i>Parent / Admin
+    </a>
+  </div>
+</div>
+{% endblock %}

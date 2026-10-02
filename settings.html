@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav %}
+{% block title %}Settings - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='settings') }}
+<div class="container-fluid px-3 px-lg-4 py-4" style="max-width:600px;">
+  <h2 class="fh-page-title mb-4"><i class="bi bi-gear"></i> Settings</h2>
+
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-house-fill"></i> Family Identity</div>
+    <div class="fh-card-body">
+      <form method="POST" action="{{ url_for('settings') }}" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="fh-label">Hub Name</label>
+          <input type="text" name="app_name" class="form-control fh-input" value="{{ current_name }}" required>
+          <div class="form-text">Shown on the kiosk and browser tab.</div>
+        </div>
+        <div class="mb-3">
+          <label class="fh-label">Theme Colour</label>
+          <div class="d-flex align-items-center gap-2">
+            <input type="color" name="theme_color" class="form-control form-control-color fh-input" value="{{ theme_color }}" style="width:60px;height:42px;">
+            <span class="text-muted">{{ theme_color }}</span>
+          </div>
+          <div class="form-text">Used for accents throughout the app.</div>
+        </div>
+        <div class="mb-3">
+          <label class="fh-label">Brightness</label>
+          <div class="d-flex gap-2 flex-wrap">
+            {% set modes = [('dark', 'Dark', 'bi-moon-stars'), ('medium', 'Medium', 'bi-circle-half'), ('light', 'Light', 'bi-sun')] %}
+            {% for value, label, icon in modes %}
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="brightness_mode" id="bm-{{ value }}" value="{{ value }}" {{ 'checked' if brightness_mode == value else '' }}>
+              <label class="form-check-label fh-check-label" for="bm-{{ value }}">
+                <i class="bi {{ icon }}"></i> {{ label }}
+              </label>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="form-text">Dark is pitch black, Medium is a softer dark grey, Light is a bright daytime look.</div>
+        </div>
+        <div class="mb-3">
+          <label class="fh-label">Family Logo</label>
+          <div class="d-flex align-items-center gap-3 mb-2">
+            {% if family_logo %}
+            <div class="fh-logo-preview">
+              <img src="/static/{{ family_logo }}" alt="Family logo">
+            </div>
+            {% else %}
+            <div class="fh-logo-preview fh-logo-preview-empty">
+              <i class="bi bi-image"></i>
+            </div>
+            {% endif %}
+            <input type="file" name="logo" accept="image/*" class="form-control fh-input">
+          </div>
+          <div class="form-text">Upload a family logo to display on the dashboard.</div>
+        </div>
+
+        <div class="mb-3">
+          <label class="fh-label">Wallpaper (optional)</label>
+          {% if wallpaper %}
+          <div class="mb-2">
+            <img src="/static/{{ wallpaper }}" alt="Wallpaper preview" style="max-width:100%;max-height:120px;border-radius:8px;opacity:0.6;">
+          </div>
+          {% endif %}
+          <input type="file" name="wallpaper" accept="image/*" class="form-control fh-input">
+          <div class="form-text">Upload a background image. It shows faintly behind everything.</div>
+        </div>
+
+        <hr class="my-4 border-secondary">
+
+        <div class="mb-3">
+          <div class="form-check fh-check">
+            <input class="form-check-input" type="checkbox" name="auto_update_enabled" id="autoUpdate" {{ 'checked' if auto_update == '1' else '' }}>
+            <label class="form-check-label fh-check-label" for="autoUpdate">
+              <i class="bi bi-arrow-repeat text-cyan"></i> Enable Auto-Update
+            </label>
+          </div>
+          <div class="form-text">When enabled, the app checks for updates every hour and installs them automatically. Requires deployment via git on the Pi.</div>
+        </div>
+
+        <div class="mb-3">
+          <div class="fh-retention-info-box">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <i class="bi bi-database text-cyan"></i>
+              <span class="fw-bold">Data Retention: 1 Year</span>
+            </div>
+            <div class="text-muted small">Chore records are kept for 365 days then automatically deleted by the daily cleanup timer. Currently: {{ retention_stats['total_logs'] }} logs, {{ retention_stats['total_payments'] }} payments, {{ retention_stats['old_logs'] }} older than 1 year.</div>
+            <a href="{{ url_for('system_info') }}" class="fh-link fh-link-sm mt-1 d-block">View system info <i class="bi bi-arrow-right"></i></a>
+          </div>
+        </div>
+
+        <hr class="my-4 border-secondary">
+
+        <div class="mb-3">
+          <label class="fh-label"><i class="bi bi-grid-3x3-gap"></i> Dashboard Stat Icons</label>
+          <div class="form-text mb-2">Customize the three stat cards on the dashboard. Enter an emoji or upload a small photo for each.</div>
+          {% set stat_items = [
+            ('earned', 'Total Earned', 'bi-cash-stack'),
+            ('chores', 'Chores Completed', 'bi-check2-circle'),
+            ('progress', 'In Progress Now', 'bi-hourglass-split')
+          ] %}
+          {% for key, label, default_icon in stat_items %}
+          {% set current = stat_icons.get(key, '') %}
+          <div class="mb-3">
+            <label class="fh-label">{{ label }}</label>
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <div class="fh-stat-preview" style="width:48px;height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;background:rgba(26,36,56,0.6);border:1px solid var(--fh-border);flex-shrink:0;">
+                {% if current.startswith('emoji:') %}
+                  <span>{{ current[6:] }}</span>
+                {% elif current.startswith('photo:') %}
+                  <img src="/static/{{ current[6:] }}" alt="" style="width:100%;height:100%;border-radius:10px;object-fit:cover;">
+                {% else %}
+                  <i class="bi {{ default_icon }}"></i>
+                {% endif %}
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <input type="text" name="stat_icon_{{ key }}_emoji" class="form-control fh-input" placeholder="Emoji" maxlength="4" style="width:90px;" value="{{ current[6:] if current.startswith('emoji:') else '' }}">
+                <span class="text-muted small">or</span>
+                <input type="file" name="stat_icon_{{ key }}_photo" accept="image/*" class="form-control fh-input" style="max-width:200px;">
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-check-lg"></i> Save Settings</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="fh-card border-danger">
+    <div class="fh-card-header text-danger"><i class="bi bi-shield-fill-exclamation"></i> Danger Zone</div>
+    <div class="fh-card-body">
+      <p class="text-muted mb-2">Backup and restore the database. Restoring will replace all current data.</p>
+      <a href="{{ url_for('backup_page') }}" class="btn fh-btn-outline">
+        <i class="bi bi-shield-fill-check"></i> Backup & Restore
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

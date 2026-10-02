@@ -195,6 +195,12 @@ MIGRATIONS = [
     "ALTER TABLE chores ADD COLUMN repeat_frequency TEXT NOT NULL DEFAULT 'daily'",
     "ALTER TABLE chores ADD COLUMN due_days TEXT DEFAULT '0,1,2,3,4,5,6'",
     "ALTER TABLE chores ADD COLUMN single_child_only INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE payments ADD COLUMN payout_method TEXT DEFAULT ''",
+    "ALTER TABLE payments ADD COLUMN token_amount REAL DEFAULT 0",
+    "ALTER TABLE payments ADD COLUMN gbp_amount REAL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN wallpaper TEXT DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN can_do_hard_chores INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE chores ADD COLUMN requires_hard_chores INTEGER NOT NULL DEFAULT 0",
 ]
 
 
@@ -275,7 +281,7 @@ def get_children():
 def update_user(user_id, **fields):
     db = get_db()
     allowed = {'name', 'surname', 'nickname', 'username', 'email', 'password_hash', 'role', 'pin',
-               'photo_path', 'is_active', 'color', 'date_of_birth', 'status'}
+               'photo_path', 'is_active', 'color', 'date_of_birth', 'status', 'wallpaper', 'can_do_hard_chores'}
     sets = []
     vals = []
     for k, v in fields.items():
@@ -462,12 +468,12 @@ def get_backup_code_count(user_id):
 
 def create_chore(name, icon, pay_amount, description='', is_active=1,
                chore_emoji='', chore_image='', repeat_frequency='daily', due_days='0,1,2,3,4,5,6',
-               single_child_only=0):
+               single_child_only=0, requires_hard_chores=0):
     db = get_db()
     cursor = db.execute(
-        """INSERT INTO chores (name, icon, pay_amount, description, is_active, chore_emoji, chore_image, repeat_frequency, due_days, single_child_only)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (name, icon, pay_amount, description, is_active, chore_emoji, chore_image, repeat_frequency, due_days, single_child_only)
+        """INSERT INTO chores (name, icon, pay_amount, description, is_active, chore_emoji, chore_image, repeat_frequency, due_days, single_child_only, requires_hard_chores)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (name, icon, pay_amount, description, is_active, chore_emoji, chore_image, repeat_frequency, due_days, single_child_only, requires_hard_chores)
     )
     db.commit()
     return cursor.lastrowid
@@ -487,7 +493,7 @@ def get_chore(chore_id):
 
 def update_chore(chore_id, **fields):
     db = get_db()
-    allowed = {'name', 'icon', 'pay_amount', 'description', 'is_active', 'chore_emoji', 'chore_image', 'repeat_frequency', 'due_days', 'single_child_only'}
+    allowed = {'name', 'icon', 'pay_amount', 'description', 'is_active', 'chore_emoji', 'chore_image', 'repeat_frequency', 'due_days', 'single_child_only', 'requires_hard_chores'}
     sets = []
     vals = []
     for k, v in fields.items():
@@ -666,11 +672,13 @@ def get_chore_count(month=None):
 
 # --- Payment helpers ---
 
-def create_payment(user_id, amount, ptype='payout', description='', log_id=None, created_by=None):
+def create_payment(user_id, amount, ptype='payout', description='', log_id=None, created_by=None,
+                    payout_method='', token_amount=0, gbp_amount=0):
     db = get_db()
     cursor = db.execute(
-        "INSERT INTO payments (user_id, amount, type, description, log_id, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-        (user_id, amount, ptype, description, log_id, created_by)
+        """INSERT INTO payments (user_id, amount, type, description, log_id, created_by, payout_method, token_amount, gbp_amount)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, amount, ptype, description, log_id, created_by, payout_method, token_amount, gbp_amount)
     )
     db.commit()
     return cursor.lastrowid
@@ -679,7 +687,12 @@ def create_payment(user_id, amount, ptype='payout', description='', log_id=None,
 def get_payments(user_id=None, month=None):
     db = get_db()
     params = []
-    query = "SELECT p.*, u.name as user_name FROM payments p JOIN users u ON p.user_id=u.id WHERE 1=1"
+    query = """SELECT p.*, u.name as user_name,
+               pu.name as payer_name
+               FROM payments p
+               JOIN users u ON p.user_id=u.id
+               LEFT JOIN users pu ON p.created_by=pu.id
+               WHERE 1=1"""
     if user_id:
         query += " AND p.user_id=?"
         params.append(user_id)

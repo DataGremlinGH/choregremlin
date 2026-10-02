@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create release zip
+        run: |
+          # Remove files that shouldn't be in the release
+          rm -rf .git __pycache__ instance/*.db instance/*.db-* static/uploads/*
+          # Create the zip
+          cd ..
+          zip -r ChoreGremlin-${{ github.ref_name }}.zip choregremlin/ \
+            -x "*/.git/*" "*/__pycache__/*" "*/instance/*.db" "*/instance/*.db-*" "*/static/uploads/*" "*/.env"
+          mv ChoreGremlin-${{ github.ref_name }}.zip ${{ github.workspace }}/
+
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ChoreGremlin-${{ github.ref_name }}.zip
+          generate_release_notes: true

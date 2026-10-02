@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% block title %}{{ child['name'] }} - {{ app_name }}{% endblock %}
+{% block body %}
+{% if child['wallpaper'] %}
+<div class="fh-bg" style="background-image: url('/static/{{ child['wallpaper'] }}'); background-size: cover; background-position: center; opacity: 0.12; position: fixed; inset: 0; z-index: -1;"></div>
+{% endif %}
+<div class="fh-kiosk-screen">
+  <!-- Header -->
+  <div class="fh-kiosk-header">
+    <div class="d-flex align-items-center gap-3">
+      <div class="fh-kid-photo" style="width:48px;height:48px;border-color: {{ child['color'] }};">
+        {% if child['photo_path'] %}
+          <img src="/static/{{ child['photo_path'] }}" alt="{{ child['name'] }}">
+        {% else %}
+          <span class="fh-kid-initial" style="font-size:1.4rem;color: {{ child['color'] }};">{{ child['name'][0]|upper }}</span>
+        {% endif %}
+      </div>
+      <div>
+        <div class="fh-kiosk-name" style="color: {{ child['color'] }};">{{ child['name'] }}</div>
+        <div class="fh-kiosk-balance">
+          <i class="bi bi-cash-coin"></i>
+          Balance: {{ token_icon|safe }}{{ "%.2f"|format(balance) }}
+          {% if my_earnings and my_earnings['total_earned'] > 0 %}
+          | This month: {{ token_icon|safe }}{{ "%.2f"|format(my_earnings['total_earned']) }}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <a href="{{ url_for('kiosk_child_logout') }}" class="btn btn-sm fh-btn-outline">
+      <i class="bi bi-box-arrow-right"></i> Done
+    </a>
+  </div>
+
+  <!-- Active chores -->
+  {% if active_logs %}
+  <div class="fh-active-section">
+    <h3 class="fh-section-title"><i class="bi bi-hourglass-split"></i> In Progress</h3>
+    <div class="fh-active-grid">
+      {% for log in active_logs %}
+      <div class="fh-active-card">
+        <div class="fh-active-icon"><i class="bi {{ log['chore_icon'] }}"></i></div>
+        <div class="fh-active-info">
+          <div class="fh-active-name">{{ log['chore_name'] }}</div>
+          <div class="fh-active-time" data-started="{{ log['started_at'] }}">
+            <i class="bi bi-clock"></i> <span class="fh-timer">0m 0s</span>
+          </div>
+        </div>
+        <form method="POST" action="{{ url_for('kiosk_finish_chore', log_id=log['id']) }}" class="d-inline">
+          <button type="submit" class="btn fh-btn-success btn-sm">
+            <i class="bi bi-check-circle-fill"></i> Done!
+          </button>
+        </form>
+        <form method="POST" action="{{ url_for('kiosk_cancel_chore', log_id=log['id']) }}" class="d-inline">
+          <button type="submit" class="btn btn-sm fh-btn-cancel" title="Cancel">
+            <i class="bi bi-x-circle"></i>
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Available chores -->
+  <div class="mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h3 class="fh-section-title mb-0"><i class="bi bi-list-check"></i> Pick a Chore</h3>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('kiosk_drop_chores') }}" class="btn fh-btn-cyan btn-sm">
+          <i class="bi bi-droplet-fill"></i> Drop Chores
+        </a>
+        <a href="{{ url_for('kiosk_calendar') }}" class="btn fh-btn-outline btn-sm">
+          <i class="bi bi-calendar-event"></i> Calendar
+        </a>
+      </div>
+    </div>
+    {% if chores %}
+    <div class="fh-chore-grid">
+      {% for chore in chores %}
+      {% set is_active = chore['id'] in active_ids %}
+      <div class="fh-chore-card {{ 'fh-chore-active' if is_active else '' }}" 
+           {% if not is_active %}data-href="{{ url_for('kiosk_start_chore', chore_id=chore['id']) }}"{% endif %}>
+        {% if not is_active %}
+        <form method="POST" action="{{ url_for('kiosk_start_chore', chore_id=chore['id']) }}" class="fh-chore-form">
+        {% endif %}
+        <div class="fh-chore-icon">
+          {% if chore['chore_image'] %}
+          <img src="/static/{{ chore['chore_image'] }}" alt="" style="width:32px;height:32px;border-radius:8px;">
+          {% elif chore['chore_emoji'] %}
+          <span style="font-size:1.5rem;">{{ chore['chore_emoji'] }}</span>
+          {% else %}
+          <i class="bi {{ chore['icon'] }}"></i>
+          {% endif %}
+        </div>
+        <div class="fh-chore-name">{{ chore['name'] }}</div>
+        <div class="fh-chore-pay">
+          <i class="bi bi-cash"></i> {{ token_icon|safe }}{{ "%.2f"|format(chore['pay_amount']) }}
+        </div>
+        {% if chore['single_child_only'] %}
+        <div class="fh-chore-solo"><i class="bi bi-person-lock"></i> One at a time</div>
+        {% endif %}
+        {% if is_active %}
+        <div class="fh-chore-active-time" data-started="{% for log in active_logs %}{% if log['chore_id'] == chore['id'] %}{{ log['started_at'] }}{% endif %}{% endfor %}">
+          <i class="bi bi-clock"></i> <span class="fh-timer">0m 0s</span>
+        </div>
+        {% else %}
+        <button type="submit" class="fh-chore-start">
+          <i class="bi bi-play-circle-fill"></i> Start
+        </button>
+        {% endif %}
+        {% if not is_active %}</form>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">
+      <i class="bi bi-emoji-frown fs-1 d-block mb-2"></i>
+      <p>No chores available right now.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/kiosk-timer.js"></script>
+{% endblock %}

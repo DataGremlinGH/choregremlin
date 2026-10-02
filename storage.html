@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav %}
+{% block title %}Storage - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='storage') }}
+<div class="container-fluid px-3 px-lg-4 py-4" style="max-width:700px;">
+  <h2 class="fh-page-title mb-4"><i class="bi bi-device-hdd"></i> Storage</h2>
+
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-folder-fill"></i> Current Data Location</div>
+    <div class="fh-card-body">
+      <div class="fh-storage-info">
+        <div class="fh-storage-row"><span class="fh-storage-label">Path</span><span class="fh-storage-value">{{ dir_info['path'] }}</span></div>
+        <div class="fh-storage-row"><span class="fh-storage-label">Size</span><span class="fh-storage-value">{{ dir_info['size'] }}</span></div>
+        <div class="fh-storage-row"><span class="fh-storage-label">Free Space</span><span class="fh-storage-value">{{ dir_info['free'] }}</span></div>
+      </div>
+    </div>
+  </div>
+
+  {% if storage['moved'] and storage['previous_dir'] %}
+  <div class="fh-card border-warning mb-3">
+    <div class="fh-card-header text-warning"><i class="bi bi-exclamation-triangle"></i> Move Pending Confirmation</div>
+    <div class="fh-card-body">
+      <p class="text-muted">Data was moved from <code>{{ storage['previous_dir'] }}</code> to <code>{{ storage['data_dir'] }}</code>. The old copy is still on disk.</p>
+      <div class="d-flex gap-2 flex-wrap">
+        <form method="POST" action="{{ url_for('storage_rollback') }}" onsubmit="return confirm('Roll back to the previous location?')">
+          <button class="btn fh-btn-outline btn-sm"><i class="bi bi-arrow-counterclockwise"></i> Roll Back</button>
+        </form>
+        <form method="POST" action="{{ url_for('storage_confirm_delete') }}" onsubmit="return confirm('Permanently delete the old data copy? This cannot be undone.')">
+          <button class="btn fh-btn-danger btn-sm"><i class="bi bi-trash"></i> Delete Old Copy</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-arrow-left-right"></i> Move Data to New Location</div>
+    <div class="fh-card-body">
+      <p class="text-muted mb-3">Move all data (database, photos, backups, uploads) to another drive, USB stick, or network share. The old copy is kept until you confirm deletion.</p>
+      {% if drives %}
+      <div class="mb-3">
+        <label class="fh-label">Detected Drives</label>
+        <div class="fh-drive-list">
+          {% for d in drives %}
+          <div class="fh-drive-item">
+            <i class="bi bi-device-hdd text-cyan"></i>
+            <span>{{ d['name'] }}</span>
+            <span class="text-muted">{{ d['size'] }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      <form method="POST" action="{{ url_for('storage_move') }}" onsubmit="return confirm('This will copy all data to the new location. Make sure the target drive has enough free space. Continue?')">
+        <div class="mb-3">
+          <label class="fh-label">Target Path</label>
+          <input type="text" name="target_path" class="form-control fh-input" placeholder="/mnt/usb/choregremlin-data" required>
+          <div class="form-text">Enter the full path, e.g. <code>/mnt/usb/choregremlin-data</code> for a USB drive.</div>
+        </div>
+        <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-box-arrow-right"></i> Move Data</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="fh-card border-danger">
+    <div class="fh-card-header text-danger"><i class="bi bi-exclamation-triangle"></i> Warning</div>
+    <div class="fh-card-body">
+      <ul class="fh-net-tips">
+        <li><i class="bi bi-arrow-right-short text-cyan"></i> Always make a backup before moving data.</li>
+        <li><i class="bi bi-arrow-right-short text-cyan"></i> The service must be restarted after moving for the new location to take effect.</li>
+        <li><i class="bi bi-arrow-right-short text-cyan"></i> The old copy is kept until you confirm deletion, so you can roll back if something goes wrong.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

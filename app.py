@@ -354,6 +354,8 @@ def child_chores():
     active_ids = {log['chore_id'] for log in active_logs}
     other_active_ids = {log['chore_id'] for log in db_module.get_active_logs() if log['user_id'] != child['id']}
     chores = [c for c in chores if not (c['single_child_only'] and c['id'] in other_active_ids)]
+    if not child['can_do_hard_chores']:
+        chores = [c for c in chores if not c['requires_hard_chores']]
     balance = db_module.get_balance(child['id'])
     month_earnings = db_module.get_monthly_earnings(child['id'])
     my_earnings = month_earnings[0] if month_earnings else None
@@ -369,6 +371,9 @@ def kiosk_start_chore(chore_id):
     chore = db_module.get_chore(chore_id)
     if not chore or not chore['is_active']:
         flash('Chore not available.', 'danger')
+        return redirect(url_for('child_chores'))
+    if chore['requires_hard_chores'] and not child['can_do_hard_chores']:
+        flash('This chore is for older kids only.', 'warning')
         return redirect(url_for('child_chores'))
     if chore['single_child_only'] and db_module.is_chore_in_progress_by_others(chore_id, child['id']):
         flash('Someone else is already doing this chore.', 'warning')
@@ -496,8 +501,11 @@ def edit_kid(kid_id):
         color = request.form.get('color', '#00d9ff').strip() or '#00d9ff'
         status = request.form.get('status', 'active').strip()
         photo = request.files.get('photo')
+        wallpaper = request.files.get('wallpaper')
+        can_do_hard_chores = 1 if request.form.get('can_do_hard_chores') else 0
         updates = {'name': name, 'surname': surname, 'nickname': nickname,
-                   'date_of_birth': date_of_birth, 'color': color, 'status': status}
+                   'date_of_birth': date_of_birth, 'color': color, 'status': status,
+                   'can_do_hard_chores': can_do_hard_chores}
         if pin and (len(pin) < 4 or len(pin) > 6 or not pin.isdigit()):
             flash('PIN must be 4 to 6 digits.', 'danger')
             return render_template('edit_kid.html', child=child)
@@ -506,6 +514,10 @@ def edit_kid(kid_id):
             photo_path = save_photo(photo, prefix='child')
             if photo_path:
                 updates['photo_path'] = photo_path
+        if wallpaper and wallpaper.filename:
+            wp_path = save_wallpaper(wallpaper)
+            if wp_path:
+                updates['wallpaper'] = wp_path
         db_module.update_user(kid_id, **updates)
         db_module.log_activity(session.get('user_id'), 'edit_child', f'Edited child: {name}')
         flash('Updated child profile.', 'success')
@@ -569,9 +581,10 @@ def add_chore():
     if img_file and img_file.filename:
         chore_image = save_photo(img_file, prefix='chore')
     single_child_only = 1 if request.form.get('single_child_only') else 0
+    requires_hard_chores = 1 if request.form.get('requires_hard_chores') else 0
     db_module.create_chore(name, icon, pay, description, chore_emoji=chore_emoji,
                           chore_image=chore_image, repeat_frequency=repeat_frequency, due_days=due_days,
-                          single_child_only=single_child_only)
+                          single_child_only=single_child_only, requires_hard_chores=requires_hard_chores)
     chore_id = db_module.get_all_chores(active_only=False)[-1]['id']
     user_ids = request.form.getlist('user_ids')
     if user_ids:
@@ -595,6 +608,7 @@ def edit_chore(chore_id):
         description = request.form.get('description', '').strip()
         is_active = 1 if request.form.get('is_active') else 0
         single_child_only = 1 if request.form.get('single_child_only') else 0
+        requires_hard_chores = 1 if request.form.get('requires_hard_chores') else 0
         chore_emoji = request.form.get('chore_emoji', '').strip()
         repeat_frequency = request.form.get('repeat_frequency', 'daily').strip()
         due_days = ','.join(request.form.getlist('due_days'))
@@ -603,7 +617,7 @@ def edit_chore(chore_id):
         updates = dict(name=name, icon=icon, pay_amount=pay, description=description,
                       is_active=is_active, chore_emoji=chore_emoji,
                       repeat_frequency=repeat_frequency, due_days=due_days,
-                      single_child_only=single_child_only)
+                      single_child_only=single_child_only, requires_hard_chores=requires_hard_chores)
         img_file = request.files.get('chore_image')
         if img_file and img_file.filename:
             updates['chore_image'] = save_photo(img_file, prefix='chore')
@@ -645,9 +659,16 @@ def manage_payments():
     children = db_module.get_children()
     payments = db_module.get_payments(user_id=child_id, month=month)
     balances = {c['id']: db_module.get_balance(c['id']) for c in children}
+    currency = db_module.get_currency_settings()
+    gbp_value = currency['gbp_value']
+    balances_gbp = {c['id']: round(balances[c['id']] * gbp_value, 2) for c in children}
+    total_tokens = sum(balances.values())
+    total_gbp = round(total_tokens * gbp_value, 2)
     return render_template('payments.html', children=children, payments=payments,
-                           balances=balances, selected_month=month,
-                           selected_child=child_id)
+                           balances=balances, balances_gbp=balances_gbp,
+                           gbp_value=gbp_value, total_tokens=total_tokens,
+                           total_gbp=total_gbp,
+                           selected_month=month, selected_child=child_id)
 
 
 @app.route('/payments/add', methods=['POST'])
@@ -657,13 +678,19 @@ def add_payment():
     amount = round(float(request.form.get('amount', 0)), 2)
     ptype = request.form.get('type', 'payout')
     description = request.form.get('description', '').strip()
+    payout_method = request.form.get('payout_method', '').strip()
     if ptype == 'payout':
         amount = -abs(amount)
     else:
         amount = abs(amount)
     amount = round(amount, 2)
+    currency = db_module.get_currency_settings()
+    token_amt = abs(amount)
+    gbp_amt = round(token_amt * currency['gbp_value'], 2)
     db_module.create_payment(user_id, amount, ptype=ptype, description=description,
-                              created_by=session.get('user_id'))
+                              created_by=session.get('user_id'),
+                              payout_method=payout_method,
+                              token_amount=token_amt, gbp_amount=gbp_amt)
     flash('Payment recorded.', 'success')
     return redirect(url_for('manage_payments'))
 
@@ -673,6 +700,40 @@ def add_payment():
 def delete_payment_route(payment_id):
     db_module.delete_payment(payment_id)
     flash('Payment deleted.', 'info')
+    return redirect(url_for('manage_payments'))
+
+
+@app.route('/payments/payout-all', methods=['POST'])
+@login_required(roles=['admin', 'parent'])
+def payout_all():
+    payout_method = request.form.get('payout_method', 'cash').strip()
+    if payout_method not in ('cash', 'bank'):
+        payout_method = 'cash'
+    currency = db_module.get_currency_settings()
+    gbp_value = currency['gbp_value']
+    children = db_module.get_children()
+    paid_count = 0
+    for c in children:
+        balance = db_module.get_balance(c['id'])
+        if balance <= 0:
+            continue
+        token_amt = balance
+        gbp_amt = round(token_amt * gbp_value, 2)
+        db_module.create_payment(
+            c['id'], -balance, ptype='payout',
+            description=f'Payout (End of Month) - {payout_method.title()}',
+            created_by=session.get('user_id'),
+            payout_method=payout_method,
+            token_amount=token_amt,
+            gbp_amount=gbp_amt
+        )
+        paid_count += 1
+    if paid_count > 0:
+        db_module.log_activity(session.get('user_id'), 'payout_all',
+                               f'End of month payout to {paid_count} kids via {payout_method}')
+        flash(f'Payout completed for {paid_count} kid(s). All balances reset to 0.', 'success')
+    else:
+        flash('No kids had a balance to pay out.', 'info')
     return redirect(url_for('manage_payments'))
 
 
