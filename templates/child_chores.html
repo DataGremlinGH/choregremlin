@@ -1,6 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}{{ child['name'] }} - {{ app_name }}{% endblock %}
 {% block body %}
+{% if child['wallpaper'] %}
+<div class="fh-bg" style="background-image: url('/static/{{ child['wallpaper'] }}'); background-size: cover; background-position: center; opacity: 0.12; position: fixed; inset: 0; z-index: -1;"></div>
+{% endif %}
 <div class="fh-kiosk-screen">
   <!-- Header -->
   <div class="fh-kiosk-header">

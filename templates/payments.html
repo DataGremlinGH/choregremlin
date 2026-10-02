@@ -17,25 +17,62 @@
     </form>
   </div>
 
-  <!-- Balances -->
-  <div class="row g-3 mb-4">
-    {% for c in children %}
-    <div class="col-6 col-md-3">
-      <div class="fh-stat-card">
-        <div class="fh-stat-body">
-          <div class="fh-stat-label">{{ c['name'] }}</div>
-          <div class="fh-stat-value {{ 'text-warning' if balances[c['id']] > 0 else 'text-muted' }}">
-            {{ token_icon|safe }}{{ "%.2f"|format(balances[c['id']]) }}
+  <!-- Balances with GBP conversion -->
+  <div class="fh-card mb-4">
+    <div class="fh-card-header"><i class="bi bi-wallet2"></i> Balances &amp; GBP Conversion</div>
+    <div class="fh-card-body">
+      <div class="row g-3 mb-3">
+        {% for c in children %}
+        <div class="col-6 col-md-3">
+          <div class="fh-stat-card">
+            <div class="fh-stat-body">
+              <div class="fh-stat-label">{{ c['name'] }}</div>
+              <div class="fh-stat-value {{ 'text-warning' if balances[c['id']] > 0 else 'text-muted' }}">
+                {{ token_icon|safe }}{{ "%.2f"|format(balances[c['id']]) }}
+              </div>
+              {% if balances[c['id']] > 0 %}
+              <div class="fh-stat-label text-muted mt-1">
+                &pound;{{ "%.2f"|format(balances_gbp[c['id']]) }}
+              </div>
+              {% endif %}
+            </div>
           </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top">
+        <div>
+          <span class="text-muted">Total Outstanding:</span>
+          <span class="text-warning fw-bold fs-5">{{ token_icon|safe }}{{ "%.2f"|format(total_tokens) }}</span>
+          <span class="text-muted ms-2">= &pound;{{ "%.2f"|format(total_gbp) }}</span>
+          <span class="text-muted small ms-2">(at &pound;{{ "%.4f"|format(gbp_value) }} per {{ token_singular }})</span>
         </div>
       </div>
     </div>
-    {% endfor %}
   </div>
 
   <div class="row g-3">
-    <!-- Add payment -->
+    <!-- Add payment + Payout -->
     <div class="col-12 col-lg-4">
+      <div class="fh-card mb-3">
+        <div class="fh-card-header"><i class="bi bi-bank2"></i> Payout (End of Month)</div>
+        <div class="fh-card-body">
+          <p class="text-muted small">Pays out every child's full balance to zero and records a single payout entry per child with the GBP amount.</p>
+          <form method="POST" action="{{ url_for('payout_all') }}" onsubmit="return confirm('Pay out ALL balances to zero? This cannot be undone.')">
+            <div class="mb-3">
+              <label class="fh-label">Payment Method</label>
+              <select name="payout_method" class="form-select fh-input">
+                <option value="cash">Cash</option>
+                <option value="bank">Bank</option>
+              </select>
+            </div>
+            <button type="submit" class="btn fh-btn-cyan w-100">
+              <i class="bi bi-cash-stack"></i> Payout All (End of Month)
+            </button>
+          </form>
+        </div>
+      </div>
+
       <div class="fh-card">
         <div class="fh-card-header"><i class="bi bi-plus-circle"></i> Record Payment</div>
         <div class="fh-card-body">
@@ -52,6 +89,13 @@
                 <option value="payout">Payout (money out)</option>
                 <option value="bonus">Bonus (money in)</option>
                 <option value="adjustment">Adjustment</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="fh-label">Payment Method</label>
+              <select name="payout_method" class="form-select fh-input">
+                <option value="cash">Cash</option>
+                <option value="bank">Bank</option>
               </select>
             </div>
             <div class="mb-3">
@@ -76,17 +120,36 @@
           {% if payments %}
           <div class="table-responsive">
             <table class="table fh-table">
-              <thead><tr><th>Date</th><th>Kid</th><th>Type</th><th>Description</th><th>Amount</th>{% if g.user['role'] == 'admin' %}<th></th>{% endif %}</tr></thead>
+              <thead><tr>
+                <th>Date / Time</th>
+                <th>Paid To</th>
+                <th>Paid By</th>
+                <th>Tokens</th>
+                <th>GBP</th>
+                <th>Method</th>
+                <th>Description</th>
+                {% if g.user['role'] == 'admin' %}<th></th>{% endif %}
+              </tr></thead>
               <tbody>
                 {% for p in payments %}
                 <tr>
                   <td class="text-muted">{{ p['created_at'][:16] }}</td>
                   <td>{{ p['user_name'] }}</td>
-                  <td><span class="badge {{ 'bg-info' if p['type'] == 'earning' else 'bg-warning' if p['type'] == 'bonus' else 'bg-secondary' }}">{{ p['type'] }}</span></td>
-                  <td>{{ p['description'] or '—' }}</td>
-                  <td class="{{ 'text-success' if p['amount'] > 0 else 'text-danger' }} fw-bold">
-                    {{ '+' if p['amount'] > 0 else '' }}{{ token_icon|safe }}{{ "%.2f"|format(p['amount']) }}
+                  <td class="text-muted">{{ p['payer_name'] or '—' }}</td>
+                  <td class="fw-bold">
+                    {% if p['token_amount'] and p['token_amount'] > 0 %}{{ token_icon|safe }}{{ "%.2f"|format(p['token_amount']) }}{% else %}—{% endif %}
                   </td>
+                  <td>
+                    {% if p['gbp_amount'] and p['gbp_amount'] > 0 %}&pound;{{ "%.2f"|format(p['gbp_amount']) }}{% else %}—{% endif %}
+                  </td>
+                  <td>
+                    {% if p['payout_method'] %}
+                      <span class="badge {{ 'bg-success' if p['payout_method'] == 'cash' else 'bg-info' }}">{{ p['payout_method']|title }}</span>
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-muted small">{{ p['description'] or '—' }}</td>
                   {% if g.user['role'] == 'admin' %}
                   <td>
                     <form method="POST" action="{{ url_for('delete_payment_route', payment_id=p['id']) }}" onsubmit="return confirm('Delete this payment?')">

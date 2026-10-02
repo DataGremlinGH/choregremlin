@@ -33,6 +33,7 @@
               <span class="badge bg-secondary">No PIN</span>
               {% endif %}
               <span class="badge fh-status-badge fh-status-{{ child['status'] }}">{{ child['status'] }}</span>
+              {% if child['can_do_hard_chores'] %}<span class="badge bg-danger"><i class="bi bi-shield-exclamation"></i> Hard chores</span>{% endif %}
             </div>
           </div>
         </div>
