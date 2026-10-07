@@ -990,8 +990,8 @@ def set_storage_config(data_dir, previous_dir=None, moved=False):
 def create_drop_chore(name, initial_points, decay_per_minute, chore_id=None,
                       chore_emoji='', chore_image='', created_by=None, expires_minutes=60):
     db = get_db()
-    from datetime import datetime as dt, timedelta
-    expires_at = (dt.now() + timedelta(minutes=expires_minutes)).isoformat()
+    from datetime import datetime as dt, timedelta, timezone
+    expires_at = (dt.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=expires_minutes)).isoformat()
     cursor = db.execute(
         """INSERT INTO drop_chores (chore_id, name, chore_emoji, chore_image, initial_points, current_points,
            decay_per_minute, posted_at, expires_at, status, created_by)
@@ -1031,12 +1031,12 @@ def claim_drop_chore(drop_id, user_id):
 def update_drop_chore_points():
     """Decay all available drop chores. Auto-assign any that reach zero."""
     db = get_db()
-    from datetime import datetime as dt
+    from datetime import datetime as dt, timezone
     drops = db.execute("SELECT * FROM drop_chores WHERE status='available'").fetchall()
     results = []
     for drop in drops:
         posted = dt.fromisoformat(drop['posted_at'])
-        elapsed_min = (dt.now() - posted).total_seconds() / 60
+        elapsed_min = (dt.now(timezone.utc).replace(tzinfo=None) - posted).total_seconds() / 60
         new_points = max(0, drop['initial_points'] - (elapsed_min * drop['decay_per_minute']))
         if new_points <= 0:
             children = db.execute(
