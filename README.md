@@ -1,7 +1,5 @@
 # ChoreGremlin
 
-### The little gremlin that gets the chores done
-
 A self-hosted family chore and allowance tracker for Raspberry Pi. Runs entirely on your local network — no cloud, no subscriptions, no data leaving your home.
 
 ---
