@@ -22,7 +22,7 @@ All notable changes to this project will be documented in this file.
 - Smoke test (tests/smoke_test.py) that loads every page as admin and fails on server errors
 - Schema version tracking and numbered migrations, with a backup before pending migrations
 - Stable session secret kept beside the database, so restarts no longer log people out
-- Chore icon picker on the add and edit chore forms: icons come from the Chore_Images folder at the project root, served by the app; a photo upload takes priority
+- Chore icon dropdown on the add and edit chore forms, listing Chore_Images by name, with a browse option for your own image (an upload takes priority)
 - Events helper (events.py) with a publish call, ready for later phases
 - Git ignore rules for databases, caches, backups, uploads and secrets
 

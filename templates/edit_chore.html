@@ -36,7 +36,7 @@
             {% include '_chore_icon_picker.html' %}
           </div>
           <div class="col-md-6">
-            <label class="fh-label">Or upload a photo (optional)</label>
+            <label class="fh-label">Browse for your own image</label>
             <input type="file" name="chore_image" class="form-control fh-input" accept="image/*">
             {% if chore['chore_image'] %}
             <div class="mt-1"><img src="{{ chore_image_url(chore['chore_image']) }}" alt="" style="width:40px;height:40px;border-radius:8px;"> <span class="text-muted small">Current image</span></div>

@@ -129,8 +129,12 @@ CHORE_ICON_PREFIX = 'chore-icons/'
 def list_chore_icons():
     if not os.path.isdir(CHORE_ICON_DIR):
         return []
-    return sorted(f for f in os.listdir(CHORE_ICON_DIR)
-                  if os.path.splitext(f)[1].lower() in CHORE_ICON_EXTENSIONS)
+    files = [f for f in os.listdir(CHORE_ICON_DIR) if os.path.splitext(f)[1].lower() in CHORE_ICON_EXTENSIONS]
+    return sorted(files, key=lambda f: chore_icon_label(f).lower())
+
+
+def chore_icon_label(filename):
+    return os.path.splitext(filename)[0].replace('_', ' ')
 
 
 def chore_image_url(value):
@@ -140,6 +144,7 @@ def chore_image_url(value):
 
 
 app.jinja_env.globals['chore_image_url'] = chore_image_url
+app.jinja_env.globals['chore_icon_label'] = chore_icon_label
 
 
 @app.route('/chore-icons/<path:filename>')
