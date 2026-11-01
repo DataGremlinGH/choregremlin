@@ -27,6 +27,7 @@ import db as db_module
 from uploads import save_image, UploadError
 import clock
 from flask_wtf.csrf import CSRFProtect
+from registry import NAV_ITEMS, SETTINGS
 
 app = Flask(__name__, instance_relative_config=True)
 app.jinja_env.globals['NAV_ITEMS'] = NAV_ITEMS
