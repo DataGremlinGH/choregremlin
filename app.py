@@ -121,6 +121,34 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+CHORE_ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Chore_Images')
+CHORE_ICON_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.svg'}
+CHORE_ICON_PREFIX = 'chore-icons/'
+
+
+def list_chore_icons():
+    if not os.path.isdir(CHORE_ICON_DIR):
+        return []
+    return sorted(f for f in os.listdir(CHORE_ICON_DIR)
+                  if os.path.splitext(f)[1].lower() in CHORE_ICON_EXTENSIONS)
+
+
+def chore_image_url(value):
+    if value.startswith(CHORE_ICON_PREFIX):
+        return url_for('chore_icon_file', filename=value[len(CHORE_ICON_PREFIX):])
+    return url_for('static', filename=value)
+
+
+app.jinja_env.globals['chore_image_url'] = chore_image_url
+
+
+@app.route('/chore-icons/<path:filename>')
+def chore_icon_file(filename):
+    if filename not in list_chore_icons():
+        abort(404)
+    return send_from_directory(CHORE_ICON_DIR, filename)
+
+
 def fmt_duration(started, finished=None):
     try:
         s = datetime.fromisoformat(started.replace('Z', '+00:00')) if isinstance(started, str) else started
@@ -562,7 +590,8 @@ def manage_chores():
     assignments = {}
     for c in chores:
         assignments[c['id']] = [r['user_id'] for r in db_module.get_assignments_for_chore(c['id'])]
-    return render_template('chores.html', chores=chores, children=children, assignments=assignments)
+    return render_template('chores.html', chores=chores, children=children, assignments=assignments,
+                           chore_icons=list_chore_icons())
 
 
 @app.route('/chores/add', methods=['POST'])
@@ -584,6 +613,9 @@ def add_chore():
     img_file = request.files.get('chore_image')
     if img_file and img_file.filename:
         chore_image = save_image(img_file, app.config['UPLOAD_FOLDER'], 'chore')
+    picked_icon = request.form.get('chore_icon_file', '')
+    if not chore_image and picked_icon in list_chore_icons():
+        chore_image = f'{CHORE_ICON_PREFIX}{picked_icon}'
     single_child_only = 1 if request.form.get('single_child_only') else 0
     requires_hard_chores = 1 if request.form.get('requires_hard_chores') else 0
     db_module.create_chore(name, icon, pay, description, chore_emoji=chore_emoji,
@@ -625,10 +657,13 @@ def edit_chore(chore_id):
         img_file = request.files.get('chore_image')
         if img_file and img_file.filename:
             updates['chore_image'] = save_image(img_file, app.config['UPLOAD_FOLDER'], 'chore')
+        picked_icon = request.form.get('chore_icon_file', '')
+        if not (img_file and img_file.filename) and picked_icon in list_chore_icons():
+            updates['chore_image'] = f'{CHORE_ICON_PREFIX}{picked_icon}'
         db_module.update_chore(chore_id, **updates)
         flash('Chore updated.', 'success')
         return redirect(url_for('manage_chores'))
-    return render_template('edit_chore.html', chore=chore)
+    return render_template('edit_chore.html', chore=chore, chore_icons=list_chore_icons())
 
 
 @app.route('/chores/<int:chore_id>/delete', methods=['POST'])

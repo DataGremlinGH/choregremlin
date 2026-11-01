@@ -332,15 +332,7 @@ else
 fi
 
 echo -e "${BOLD}Setting up the data folder...${NC}"
-LEGACY_DB="$APP_DIR/instance/choregremlin.db"
-if [ -n "$ASIDE_DIR" ]; then
-    LEGACY_DB="$ASIDE_DIR/instance/choregremlin.db"
-fi
 mkdir -p "$DATA_DIR"
-if [ ! -f "$DATA_DIR/choregremlin.db" ] && [ -f "$LEGACY_DB" ]; then
-    cp -p "$LEGACY_DB" "$DATA_DIR/choregremlin.db"
-    echo "  Copied the existing database into $DATA_DIR. The original was left in place."
-fi
 chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
 
 echo -e "${BOLD}Installing Python packages...${NC}"

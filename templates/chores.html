@@ -18,7 +18,7 @@
         <div class="d-flex align-items-start justify-content-center mb-2">
           <div class="fh-chore-icon">
             {% if chore['chore_image'] %}
-            <img src="/static/{{ chore['chore_image'] }}" alt="" style="width:32px;height:32px;border-radius:8px;">
+            <img src="{{ chore_image_url(chore['chore_image']) }}" alt="" style="width:32px;height:32px;border-radius:8px;">
             {% elif chore['chore_emoji'] %}
             <span style="font-size:1.5rem;">{{ chore['chore_emoji'] }}</span>
             {% else %}
@@ -126,8 +126,11 @@
             </div>
           </div>
           <div class="row g-3 mt-1">
+            <div class="col-12">
+              {% include '_chore_icon_picker.html' %}
+            </div>
             <div class="col-md-6">
-              <label class="fh-label">Image (optional)</label>
+              <label class="fh-label">Or upload a photo (optional)</label>
               <input type="file" name="chore_image" class="form-control fh-input" accept="image/*">
             </div>
             <div class="col-md-6">

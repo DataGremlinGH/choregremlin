@@ -1,0 +1,18 @@
+<div class="chore-icon-picker">
+  <span class="fh-label d-block">Choose an icon</span>
+  {% if chore_icons %}
+  <div class="chore-icon-grid" role="radiogroup" aria-label="Chore icons">
+    {% for icon in chore_icons %}
+    {% set icon_name = icon.rsplit('.', 1)[0].replace('_', ' ').replace('-', ' ') %}
+    <label class="chore-icon-option{% if icon == selected_icon %} is-selected{% endif %}" title="{{ icon_name }}">
+      <input type="radio" name="chore_icon_file" value="{{ icon }}" class="visually-hidden"{% if icon == selected_icon %} checked{% endif %}>
+      <img src="{{ url_for('chore_icon_file', filename=icon) }}" alt="" loading="lazy">
+      <span class="chore-icon-name">{{ icon_name }}</span>
+    </label>
+    {% endfor %}
+  </div>
+  <div class="form-text">Tap an icon to use it. A photo uploaded below takes priority.</div>
+  {% else %}
+  <div class="chore-icon-empty">No icons yet. Add images to the chore icons folder, or upload a photo below.</div>
+  {% endif %}
+</div>

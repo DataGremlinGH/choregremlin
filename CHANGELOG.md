@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 - CSRF protection on all forms and form-style requests
 - Fixed the app failing to start: rebuilt the registry (ten currencies with codes, one settings list, one navigation list) and imported the navigation list and settings fields into the app
 - Added a command-line tool to change a user's password, with a backup taken first and a 10-character minimum; a new install now starts with an empty database
-- Data folder defaults to /var/lib/choregremlin, refuses locations inside the project, and copies an existing database once without overwriting
+- Data folder defaults to /var/lib/choregremlin and refuses locations inside the project; the installer no longer copies the repo database
 - Currency list (ten currencies, GBP default) in the settings registry
 - Clock helper: times stored in UTC and shown in local time
 - One upload helper for photos: converts to JPEG, resizes the longest side (400 px for profile photos), strips location data
@@ -22,7 +22,7 @@ All notable changes to this project will be documented in this file.
 - Smoke test (tests/smoke_test.py) that loads every page as admin and fails on server errors
 - Schema version tracking and numbered migrations, with a backup before pending migrations
 - Stable session secret kept beside the database, so restarts no longer log people out
-- Secure session cookie when HTTPS is enabled (CHOREGREMLIN_HTTPS=1)
+- Chore icon picker on the add and edit chore forms: icons come from the Chore_Images folder at the project root, served by the app; a photo upload takes priority
 - Events helper (events.py) with a publish call, ready for later phases
 - Git ignore rules for databases, caches, backups, uploads and secrets
 

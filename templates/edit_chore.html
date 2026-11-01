@@ -31,11 +31,15 @@
           </div>
         </div>
         <div class="row g-3 mt-1">
+          <div class="col-12">
+            {% set selected_icon = chore['chore_image'][12:] if chore['chore_image'] and chore['chore_image'].startswith('chore-icons/') else '' %}
+            {% include '_chore_icon_picker.html' %}
+          </div>
           <div class="col-md-6">
-            <label class="fh-label">Image (optional)</label>
+            <label class="fh-label">Or upload a photo (optional)</label>
             <input type="file" name="chore_image" class="form-control fh-input" accept="image/*">
             {% if chore['chore_image'] %}
-            <div class="mt-1"><img src="/static/{{ chore['chore_image'] }}" alt="" style="width:40px;height:40px;border-radius:8px;"> <span class="text-muted small">Current image</span></div>
+            <div class="mt-1"><img src="{{ chore_image_url(chore['chore_image']) }}" alt="" style="width:40px;height:40px;border-radius:8px;"> <span class="text-muted small">Current image</span></div>
             {% endif %}
           </div>
           <div class="col-md-6">
