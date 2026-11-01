@@ -5,14 +5,21 @@ Handles schema initialization and all data access.
 
 import sqlite3
 import os
-from datetime import datetime
+import shutil
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
+import clock
 
-_DATA_DIR = os.environ.get('CHOREGREMLIN_DATA_DIR', '')
-if _DATA_DIR:
-    DB_PATH = os.path.join(_DATA_DIR, 'choregremlin.db')
-else:
-    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'choregremlin.db')
+_REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.environ.get('CHOREGREMLIN_DATA_DIR', '/var/lib/choregremlin')
+DB_PATH = os.path.join(DATA_DIR, 'choregremlin.db')
+LEGACY_DB_PATH = os.path.join(_REPO_DIR, 'instance', 'choregremlin.db')
+PIN_MAX_FAILURES = 5
+PIN_LOCKOUT_MINUTES = 5
+
+if os.path.realpath(DATA_DIR) == os.path.realpath(_REPO_DIR) or \
+        os.path.realpath(DATA_DIR).startswith(os.path.realpath(_REPO_DIR) + os.sep):
+    raise RuntimeError('CHOREGREMLIN_DATA_DIR must be outside the project folder.')
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -201,19 +208,61 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN wallpaper TEXT DEFAULT ''",
     "ALTER TABLE users ADD COLUMN can_do_hard_chores INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE chores ADD COLUMN requires_hard_chores INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN pin_failures INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN pin_locked_until TEXT",
 ]
 
 
+def _backup_database():
+    """Write a dated copy of the database into backups/ before migrations change it."""
+    backup_dir = os.path.join(os.path.dirname(DB_PATH), 'backups')
+    os.makedirs(backup_dir, exist_ok=True)
+    stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    dest = os.path.join(backup_dir, f'choregremlin-{stamp}-pre-migration.db')
+    src_conn = sqlite3.connect(DB_PATH)
+    dst_conn = sqlite3.connect(dest)
+    src_conn.backup(dst_conn)
+    dst_conn.close()
+    src_conn.close()
+    print(f'Database backed up to {dest} before migrations.')
+
+
+def _copy_legacy_database():
+    """Copy the database from the project folder into the data folder once, never overwriting."""
+    if os.path.exists(DB_PATH) or not os.path.exists(LEGACY_DB_PATH):
+        return
+    os.makedirs(DATA_DIR, exist_ok=True)
+    shutil.copy2(LEGACY_DB_PATH, DB_PATH)
+    print(f'Copied database from {LEGACY_DB_PATH} to {DB_PATH}. The original was left in place.')
+
+
 def init_db():
-    """Initialize the database schema and run migrations."""
+    """Create the schema, then apply numbered migrations that are not yet recorded."""
+    _copy_legacy_database()
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
+    had_tables = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0] > 0
     conn.executescript(SCHEMA)
-    for sql in MIGRATIONS:
+    conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
+    current = conn.execute("SELECT COALESCE(MAX(version), 0) FROM schema_version").fetchone()[0]
+    pending = [(number, sql) for number, sql in enumerate(MIGRATIONS, start=1) if number > current]
+    conn.commit()
+    conn.close()
+    if pending and had_tables:
+        _backup_database()
+    conn = sqlite3.connect(DB_PATH)
+    for number, sql in pending:
         try:
             conn.execute(sql)
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as e:
+            if 'duplicate column' not in str(e):
+                raise
+        conn.execute("INSERT INTO schema_version (version) VALUES (?)", (number,))
+    plain_pins = conn.execute(
+        "SELECT id, pin FROM users WHERE pin IS NOT NULL AND pin NOT LIKE 'scrypt:%' AND pin NOT LIKE 'pbkdf2:%'"
+    ).fetchall()
+    for user_id, plain_pin in plain_pins:
+        conn.execute("UPDATE users SET pin=? WHERE id=?", (generate_password_hash(plain_pin), user_id))
     conn.commit()
     conn.close()
 
@@ -229,15 +278,20 @@ def is_setup_complete():
 
 # --- User helpers ---
 
+def _hash_pin(pin):
+    return generate_password_hash(pin) if pin else None
+
+
 def create_user(name, email, password, role='parent', pin=None, photo_path=None,
                    surname=None, nickname=None, date_of_birth=None, color='#00d9ff', status='active',
                    username=None):
     db = get_db()
     pw_hash = generate_password_hash(password) if password else None
+    pin_hash = _hash_pin(pin)
     cursor = db.execute(
         """INSERT INTO users (name, surname, nickname, username, email, password_hash, role, pin, photo_path, color, date_of_birth, status)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (name, surname, nickname, username, email, pw_hash, role, pin, photo_path, color, date_of_birth, status)
+        (name, surname, nickname, username, email, pw_hash, role, pin_hash, photo_path, color, date_of_birth, status)
     )
     db.commit()
     return cursor.lastrowid
@@ -286,6 +340,8 @@ def update_user(user_id, **fields):
     vals = []
     for k, v in fields.items():
         if k in allowed:
+            if k == 'pin':
+                v = _hash_pin(v)
             sets.append(f"{k}=?")
             vals.append(v)
     if not sets:
@@ -315,8 +371,27 @@ def set_password(user_id, password):
 
 def set_pin(user_id, pin):
     db = get_db()
-    db.execute("UPDATE users SET pin=? WHERE id=?", (pin if pin else None, user_id))
+    db.execute("UPDATE users SET pin=?, pin_failures=0, pin_locked_until=NULL WHERE id=?", (_hash_pin(pin), user_id))
     db.commit()
+
+
+def check_kiosk_pin(user, entered_pin):
+    """Return 'ok', 'wrong' or 'locked' and record the attempt."""
+    db = get_db()
+    if user['pin_locked_until'] and clock.parse_utc(user['pin_locked_until']) > clock.utc_now():
+        return 'locked'
+    if check_password_hash(user['pin'], entered_pin):
+        db.execute("UPDATE users SET pin_failures=0, pin_locked_until=NULL WHERE id=?", (user['id'],))
+        db.commit()
+        return 'ok'
+    failures = user['pin_failures'] + 1
+    locked_until = None
+    if failures >= PIN_MAX_FAILURES:
+        locked_until = clock.to_utc_text(clock.utc_now() + timedelta(minutes=PIN_LOCKOUT_MINUTES))
+        failures = 0
+    db.execute("UPDATE users SET pin_failures=?, pin_locked_until=? WHERE id=?", (failures, locked_until, user['id']))
+    db.commit()
+    return 'locked' if locked_until else 'wrong'
 
 
 # --- Login audit helpers ---
@@ -876,67 +951,15 @@ def reject_chore(log_id):
     return log
 
 
-# --- Retention helpers ---
+# --- Record counts ---
 
-def cleanup_old_records(retention_days=365):
-    """Delete chore logs and activity entries older than retention_days.
-    Returns a dict with counts of deleted rows."""
+def get_record_counts():
+    """Count stored records for display. Nothing is ever deleted automatically."""
     db = get_db()
-    from datetime import datetime as dt, timedelta
-    cutoff = (dt.now() - timedelta(days=retention_days)).strftime('%Y-%m-%d %H:%M:%S')
-
-    r1 = db.execute(
-        "DELETE FROM chore_logs WHERE status='completed' AND finished_at < ?",
-        (cutoff,)
-    )
-    chore_deleted = r1.rowcount
-
-    r2 = db.execute(
-        "DELETE FROM chore_logs WHERE status='in_progress' AND started_at < ?",
-        (cutoff,)
-    )
-    stale_deleted = r2.rowcount
-
-    r3 = db.execute(
-        "DELETE FROM activity_log WHERE created_at < ?",
-        (cutoff,)
-    )
-    activity_deleted = r3.rowcount
-
-    r4 = db.execute(
-        "DELETE FROM payments WHERE log_id IS NOT NULL AND log_id NOT IN (SELECT id FROM chore_logs)"
-    )
-    orphan_payments = r4.rowcount
-
-    db.commit()
     return {
-        'chore_logs': chore_deleted,
-        'stale_logs': stale_deleted,
-        'activity': activity_deleted,
-        'orphan_payments': orphan_payments,
-    }
-
-
-def get_retention_stats():
-    """Get counts of records by age for display."""
-    db = get_db()
-    total_logs = db.execute("SELECT COUNT(*) as cnt FROM chore_logs").fetchone()['cnt']
-    total_payments = db.execute("SELECT COUNT(*) as cnt FROM payments").fetchone()['cnt']
-    total_activity = db.execute("SELECT COUNT(*) as cnt FROM activity_log").fetchone()['cnt']
-
-    from datetime import datetime as dt, timedelta
-    cutoff = (dt.now() - timedelta(days=365)).strftime('%Y-%m-%d %H:%M:%S')
-    old_logs = db.execute(
-        "SELECT COUNT(*) as cnt FROM chore_logs WHERE finished_at < ?",
-        (cutoff,)
-    ).fetchone()['cnt']
-
-    return {
-        'total_logs': total_logs,
-        'total_payments': total_payments,
-        'total_activity': total_activity,
-        'old_logs': old_logs,
-        'retention_days': 365,
+        'total_logs': db.execute("SELECT COUNT(*) as cnt FROM chore_logs").fetchone()['cnt'],
+        'total_payments': db.execute("SELECT COUNT(*) as cnt FROM payments").fetchone()['cnt'],
+        'total_activity': db.execute("SELECT COUNT(*) as cnt FROM activity_log").fetchone()['cnt'],
     }
 
 
@@ -990,8 +1013,8 @@ def set_storage_config(data_dir, previous_dir=None, moved=False):
 def create_drop_chore(name, initial_points, decay_per_minute, chore_id=None,
                       chore_emoji='', chore_image='', created_by=None, expires_minutes=60):
     db = get_db()
-    from datetime import datetime as dt, timedelta, timezone
-    expires_at = (dt.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=expires_minutes)).isoformat()
+    from datetime import datetime as dt, timedelta
+    expires_at = (dt.now() + timedelta(minutes=expires_minutes)).isoformat()
     cursor = db.execute(
         """INSERT INTO drop_chores (chore_id, name, chore_emoji, chore_image, initial_points, current_points,
            decay_per_minute, posted_at, expires_at, status, created_by)
@@ -1031,12 +1054,12 @@ def claim_drop_chore(drop_id, user_id):
 def update_drop_chore_points():
     """Decay all available drop chores. Auto-assign any that reach zero."""
     db = get_db()
-    from datetime import datetime as dt, timezone
+    from datetime import datetime as dt
     drops = db.execute("SELECT * FROM drop_chores WHERE status='available'").fetchall()
     results = []
     for drop in drops:
         posted = dt.fromisoformat(drop['posted_at'])
-        elapsed_min = (dt.now(timezone.utc).replace(tzinfo=None) - posted).total_seconds() / 60
+        elapsed_min = (dt.now() - posted).total_seconds() / 60
         new_points = max(0, drop['initial_points'] - (elapsed_min * drop['decay_per_minute']))
         if new_points <= 0:
             children = db.execute(

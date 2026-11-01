@@ -40,7 +40,7 @@
           </div>
           <div class="col-md-6">
             <label class="fh-label">PIN (4-6 digits)</label>
-            <input type="text" name="pin" class="form-control fh-input" maxlength="6" pattern="[0-9]*" value="{{ child['pin'] or '' }}" placeholder="Leave empty for no PIN">
+            <input type="text" name="pin" class="form-control fh-input" maxlength="6" pattern="[0-9]*" placeholder="{{ 'Leave blank to keep the current PIN' if child['pin'] else 'Leave empty for no PIN' }}">
           </div>
           <div class="col-md-6">
             <label class="fh-label">Theme Colour</label>

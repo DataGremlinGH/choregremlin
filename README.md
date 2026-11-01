@@ -1,5 +1,7 @@
 # ChoreGremlin
 
+### The little gremlin that gets the chores done
+
 A self-hosted family chore and allowance tracker for Raspberry Pi. Runs entirely on your local network — no cloud, no subscriptions, no data leaving your home.
 
 ---
@@ -27,7 +29,7 @@ A self-hosted family chore and allowance tracker for Raspberry Pi. Runs entirely
 - **Backup & Restore** — Download and restore the full database from the admin panel.
 - **Auto-Update** — Checks for updates hourly. Enable/disable in settings.
 - **Auto-Restart** — Systemd service restarts on power loss or crash.
-- **1-Year Retention** — Chore records kept for 365 days, then automatically cleaned up.
+- **Records kept forever** — Nothing is ever deleted automatically.
 - **System Info** — CPU temperature, memory, disk usage, service status.
 - **PWA Support** — Installable on tablets/phones, works offline.
 
@@ -159,10 +161,9 @@ update.sh           Manual update script
 uninstall.sh        Uninstall script
 deploy/
   auto-update.sh     Auto-update script (runs via timer)
-  cleanup.py         Data retention cleanup (runs daily)
-  install.sh         Deploy-time installer for systemd services
-  *.service          systemd service files
-  *.timer            systemd timer files
+  choregremlin.service          systemd service
+  choregremlin-update.service   systemd auto-update service
+  choregremlin-update.timer     systemd auto-update timer
 instance/           SQLite database (auto-created, gitignored)
 static/
   css/               Bootstrap + custom theme

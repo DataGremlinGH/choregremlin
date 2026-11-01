@@ -24,12 +24,41 @@ from werkzeug.utils import secure_filename
 from PIL import Image
 
 import db as db_module
+from uploads import save_image, UploadError
+import clock
+from flask_wtf.csrf import CSRFProtect
 
 app = Flask(__name__, instance_relative_config=True)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+app.jinja_env.globals['NAV_ITEMS'] = NAV_ITEMS
+app.jinja_env.filters['localtime'] = clock.format_local
+def _load_secret_key():
+    """Return a SECRET_KEY that survives restarts (kept beside the database, outside git)."""
+    env_key = os.environ.get('SECRET_KEY')
+    if env_key:
+        return env_key
+    key_path = os.path.join(os.path.dirname(db_module.DB_PATH), 'secret_key')
+    if os.path.exists(key_path):
+        with open(key_path) as f:
+            return f.read().strip()
+    os.makedirs(os.path.dirname(key_path), exist_ok=True)
+    key = secrets.token_hex(32)
+    fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'w') as f:
+        f.write(key)
+    return key
+
+
+app.config['SECRET_KEY'] = _load_secret_key()
+CSRFProtect(app)
+
+
+@app.errorhandler(UploadError)
+def handle_upload_error(error):
+    flash(str(error), 'danger')
+    return redirect(request.referrer or url_for('dashboard'))
 app.config['UPLOAD_FOLDER'] = os.path.join(app.static_folder, 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024  # 8MB
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True when behind HTTPS
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('CHOREGREMLIN_HTTPS') == '1'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'}
@@ -44,7 +73,7 @@ db_module.init_db()
 
 # --- Decorators ---
 
-def login_required(roles=None):
+def require_role(*roles):
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
@@ -89,36 +118,6 @@ def kiosk_mode():
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-def save_photo(file, prefix='user'):
-    """Save an uploaded photo, resize to 256x256, return relative path."""
-    if not file or file.filename == '' or not allowed_file(file.filename):
-        return None
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    filename = f"{prefix}_{secrets.token_hex(8)}.{ext}"
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    img = Image.open(file)
-    img = img.convert('RGB')
-    img = img.resize((256, 256), Image.LANCZOS)
-    img.save(filepath, 'JPEG', quality=85)
-    return f"uploads/{filename}"
-
-
-def save_wallpaper(file):
-    """Save a wallpaper image, resize to 1920x1080 max, return relative path."""
-    if not file or file.filename == '' or not allowed_file(file.filename):
-        return None
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    filename = f"wallpaper_{secrets.token_hex(8)}.jpg"
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    img = Image.open(file)
-    img = img.convert('RGB')
-    img.thumbnail((1920, 1080), Image.LANCZOS)
-    img.save(filepath, 'JPEG', quality=80)
-    return f"uploads/{filename}"
 
 
 def fmt_duration(started, finished=None):
@@ -233,8 +232,8 @@ def setup():
         if password != confirm:
             flash('Passwords do not match.', 'danger')
             return render_template('setup.html')
-        if len(password) < 6:
-            flash('Password must be at least 6 characters.', 'danger')
+        if len(password) < 10:
+            flash('Password must be at least 10 characters.', 'danger')
             return render_template('setup.html')
 
         db_module.init_db()
@@ -327,8 +326,11 @@ def kiosk_select(child_id):
 
     if request.method == 'POST':
         if child['pin']:
-            entered_pin = request.form.get('pin', '')
-            if entered_pin != child['pin']:
+            result = db_module.check_kiosk_pin(child, request.form.get('pin', ''))
+            if result == 'locked':
+                flash('Too many wrong PINs. Please wait a few minutes and try again.', 'danger')
+                return render_template('kiosk_pin.html', child=child)
+            if result == 'wrong':
                 flash('Incorrect PIN. Please try again.', 'danger')
                 return render_template('kiosk_pin.html', child=child)
         session['kiosk_child_id'] = child_id
@@ -412,7 +414,7 @@ def kiosk_child_logout():
 # ====================
 
 @app.route('/dashboard')
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def dashboard():
     month = request.args.get('month', datetime.now().strftime('%Y-%m'))
     children = db_module.get_children()
@@ -432,7 +434,7 @@ def dashboard():
 
 
 @app.route('/family')
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def family_dashboard():
     children = db_module.get_children()
     notices = db_module.get_active_notices()
@@ -453,14 +455,14 @@ def family_dashboard():
 # --- Kids management ---
 
 @app.route('/kids')
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def manage_kids():
     children = db_module.get_children()
     return render_template('kids.html', children=children)
 
 
 @app.route('/kids/add', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def add_kid():
     name = request.form.get('name', '').strip()
     surname = request.form.get('surname', '').strip() or None
@@ -470,7 +472,7 @@ def add_kid():
     color = request.form.get('color', '#00d9ff').strip() or '#00d9ff'
     status = request.form.get('status', 'active').strip()
     photo = request.files.get('photo')
-    photo_path = save_photo(photo, prefix='child') if photo else None
+    photo_path = save_image(photo, app.config['UPLOAD_FOLDER'], 'child', 400) if photo else None
     if not name:
         flash('First name is required.', 'danger')
         return redirect(url_for('manage_kids'))
@@ -486,7 +488,7 @@ def add_kid():
 
 
 @app.route('/kids/<int:kid_id>/edit', methods=['GET', 'POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def edit_kid(kid_id):
     child = db_module.get_user(kid_id)
     if not child or child['role'] != 'child':
@@ -509,13 +511,14 @@ def edit_kid(kid_id):
         if pin and (len(pin) < 4 or len(pin) > 6 or not pin.isdigit()):
             flash('PIN must be 4 to 6 digits.', 'danger')
             return render_template('edit_kid.html', child=child)
-        updates['pin'] = pin
+        if pin:
+            updates['pin'] = pin
         if photo and photo.filename:
-            photo_path = save_photo(photo, prefix='child')
+            photo_path = save_image(photo, app.config['UPLOAD_FOLDER'], 'child', 400)
             if photo_path:
                 updates['photo_path'] = photo_path
         if wallpaper and wallpaper.filename:
-            wp_path = save_wallpaper(wallpaper)
+            wp_path = save_image(wallpaper, app.config['UPLOAD_FOLDER'], 'wallpaper')
             if wp_path:
                 updates['wallpaper'] = wp_path
         db_module.update_user(kid_id, **updates)
@@ -526,7 +529,7 @@ def edit_kid(kid_id):
 
 
 @app.route('/kids/<int:kid_id>/delete', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def delete_kid(kid_id):
     child = db_module.get_user(kid_id)
     db_module.delete_user(kid_id)
@@ -537,7 +540,7 @@ def delete_kid(kid_id):
 
 
 @app.route('/kids/<int:kid_id>/reset-pin', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def reset_pin(kid_id):
     new_pin = request.form.get('pin', '').strip() or None
     if new_pin and (len(new_pin) < 4 or len(new_pin) > 6 or not new_pin.isdigit()):
@@ -551,7 +554,7 @@ def reset_pin(kid_id):
 # --- Chores management ---
 
 @app.route('/chores')
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def manage_chores():
     chores = db_module.get_all_chores()
     children = db_module.get_children()
@@ -562,7 +565,7 @@ def manage_chores():
 
 
 @app.route('/chores/add', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def add_chore():
     name = request.form.get('name', '').strip()
     icon = request.form.get('icon', 'bi-list-check')
@@ -579,7 +582,7 @@ def add_chore():
     chore_image = ''
     img_file = request.files.get('chore_image')
     if img_file and img_file.filename:
-        chore_image = save_photo(img_file, prefix='chore')
+        chore_image = save_image(img_file, app.config['UPLOAD_FOLDER'], 'chore')
     single_child_only = 1 if request.form.get('single_child_only') else 0
     requires_hard_chores = 1 if request.form.get('requires_hard_chores') else 0
     db_module.create_chore(name, icon, pay, description, chore_emoji=chore_emoji,
@@ -595,7 +598,7 @@ def add_chore():
 
 
 @app.route('/chores/<int:chore_id>/edit', methods=['GET', 'POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def edit_chore(chore_id):
     chore = db_module.get_chore(chore_id)
     if not chore:
@@ -620,7 +623,7 @@ def edit_chore(chore_id):
                       single_child_only=single_child_only, requires_hard_chores=requires_hard_chores)
         img_file = request.files.get('chore_image')
         if img_file and img_file.filename:
-            updates['chore_image'] = save_photo(img_file, prefix='chore')
+            updates['chore_image'] = save_image(img_file, app.config['UPLOAD_FOLDER'], 'chore')
         db_module.update_chore(chore_id, **updates)
         flash('Chore updated.', 'success')
         return redirect(url_for('manage_chores'))
@@ -628,7 +631,7 @@ def edit_chore(chore_id):
 
 
 @app.route('/chores/<int:chore_id>/delete', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def delete_chore_route(chore_id):
     db_module.delete_chore(chore_id)
     flash('Chore deleted.', 'info')
@@ -636,7 +639,7 @@ def delete_chore_route(chore_id):
 
 
 @app.route('/chores/<int:chore_id>/assign', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def assign_chore_route(chore_id):
     user_ids = request.form.getlist('user_ids')
     # Clear existing assignments
@@ -652,7 +655,7 @@ def assign_chore_route(chore_id):
 # --- Payments ---
 
 @app.route('/payments')
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def manage_payments():
     month = request.args.get('month', datetime.now().strftime('%Y-%m'))
     child_id = request.args.get('child_id', type=int)
@@ -672,7 +675,7 @@ def manage_payments():
 
 
 @app.route('/payments/add', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def add_payment():
     user_id = int(request.form.get('user_id'))
     amount = round(float(request.form.get('amount', 0)), 2)
@@ -696,7 +699,7 @@ def add_payment():
 
 
 @app.route('/payments/<int:payment_id>/delete', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def delete_payment_route(payment_id):
     db_module.delete_payment(payment_id)
     flash('Payment deleted.', 'info')
@@ -704,7 +707,7 @@ def delete_payment_route(payment_id):
 
 
 @app.route('/payments/payout-all', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def payout_all():
     payout_method = request.form.get('payout_method', 'cash').strip()
     if payout_method not in ('cash', 'bank'):
@@ -740,7 +743,7 @@ def payout_all():
 # --- Logs ---
 
 @app.route('/logs')
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def view_logs():
     month = request.args.get('month', datetime.now().strftime('%Y-%m'))
     child_id = request.args.get('child_id', type=int)
@@ -753,7 +756,7 @@ def view_logs():
 # --- Parents (admin only) ---
 
 @app.route('/parents')
-@login_required(roles=['admin'])
+@require_role('admin')
 def manage_parents():
     parents = db_module.get_all_users(role='parent')
     admins = db_module.get_all_users(role='admin')
@@ -761,7 +764,7 @@ def manage_parents():
 
 
 @app.route('/parents/add', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def add_parent():
     name = request.form.get('name', '').strip()
     username = request.form.get('username', '').strip()
@@ -769,6 +772,9 @@ def add_parent():
     role = request.form.get('role', 'parent')
     if not name or not username or not password:
         flash('All fields are required.', 'danger')
+        return redirect(url_for('manage_parents'))
+    if len(password) < 10:
+        flash('Password must be at least 10 characters.', 'danger')
         return redirect(url_for('manage_parents'))
     try:
         db_module.create_user(name, None, password, role=role, username=username)
@@ -779,7 +785,7 @@ def add_parent():
 
 
 @app.route('/parents/<int:parent_id>/delete', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def delete_parent(parent_id):
     admin_count = len(db_module.get_all_users(role='admin'))
     user = db_module.get_user(parent_id)
@@ -794,14 +800,14 @@ def delete_parent(parent_id):
 # --- Family Notices ---
 
 @app.route('/notices')
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def manage_notices():
     notices = db_module.get_all_notices()
     return render_template('notices.html', notices=notices)
 
 
 @app.route('/notices/add', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def add_notice():
     title = request.form.get('title', '').strip()
     body = request.form.get('body', '').strip()
@@ -816,7 +822,7 @@ def add_notice():
 
 
 @app.route('/notices/<int:notice_id>/delete', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def delete_notice(notice_id):
     db_module.delete_notice(notice_id)
     flash('Notice removed.', 'info')
@@ -826,14 +832,14 @@ def delete_notice(notice_id):
 # --- Calendar Events ---
 
 @app.route('/events')
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def manage_events():
     events = db_module.get_all_events()
     return render_template('events.html', events=events)
 
 
 @app.route('/events/add', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def add_event():
     title = request.form.get('title', '').strip()
     event_date = request.form.get('event_date', '').strip()
@@ -849,7 +855,7 @@ def add_event():
 
 
 @app.route('/events/<int:event_id>/delete', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def delete_event(event_id):
     db_module.delete_event(event_id)
     flash('Event removed.', 'info')
@@ -875,7 +881,7 @@ def get_network_info():
 
 
 @app.route('/network')
-@login_required(roles=['admin'])
+@require_role('admin')
 def network_settings():
     net = get_network_info()
     remote_access = db_module.get_setting('remote_access_enabled', '0') == '1'
@@ -883,7 +889,7 @@ def network_settings():
 
 
 @app.route('/network/update', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def network_update():
     port = request.form.get('port', str(DEFAULT_PORT)).strip()
     try:
@@ -901,7 +907,7 @@ def network_update():
 
 
 @app.route('/network/qr')
-@login_required(roles=['admin'])
+@require_role('admin')
 def network_qr():
     import qrcode
     net = get_network_info()
@@ -921,11 +927,11 @@ def network_qr():
 # --- Password Reset (admin only) ---
 
 @app.route('/parents/<int:parent_id>/reset-password', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def reset_password(parent_id):
     password = request.form.get('password', '').strip()
-    if len(password) < 6:
-        flash('Password must be at least 6 characters.', 'danger')
+    if len(password) < 10:
+        flash('Password must be at least 10 characters.', 'danger')
         return redirect(url_for('manage_parents'))
     db_module.set_password(parent_id, password)
     db_module.log_activity(session.get('user_id'), 'reset_password', f'Reset password for user {parent_id}')
@@ -936,7 +942,7 @@ def reset_password(parent_id):
 # --- Storage Management ---
 
 @app.route('/storage')
-@login_required(roles=['admin'])
+@require_role('admin')
 def storage_page():
     import shutil
     storage = db_module.get_storage_config()
@@ -980,7 +986,7 @@ def storage_page():
 
 
 @app.route('/storage/move', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def storage_move():
     import shutil
     import tempfile
@@ -1043,7 +1049,7 @@ def storage_move():
 
 
 @app.route('/storage/confirm-delete', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def storage_confirm_delete():
     storage = db_module.get_storage_config()
     old_dir = storage['previous_dir']
@@ -1059,7 +1065,7 @@ def storage_confirm_delete():
 
 
 @app.route('/storage/rollback', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def storage_rollback():
     import shutil
     storage = db_module.get_storage_config()
@@ -1085,14 +1091,14 @@ def format_size(bytes_val):
 # --- Currency Management ---
 
 @app.route('/currency')
-@login_required(roles=['admin'])
+@require_role('admin')
 def currency_page():
     currency = db_module.get_currency_settings()
     return render_template('currency.html', currency=currency)
 
 
 @app.route('/currency/save', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def currency_save():
     token_name = request.form.get('token_name', 'Widgets').strip()
     token_singular = request.form.get('token_singular', 'Widget').strip()
@@ -1121,7 +1127,7 @@ def currency_save():
 
 
 @app.route('/currency/reset-logo', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def currency_reset_logo():
     db_module.set_setting('currency_token_logo', '')
     db_module.set_setting('currency_token_logo_type', 'emoji')
@@ -1152,7 +1158,7 @@ def save_currency_logo(file):
 # --- Security & Remote Access ---
 
 @app.route('/security')
-@login_required(roles=['admin'])
+@require_role('admin')
 def security_page():
     remote_access = db_module.get_setting('remote_access_enabled', '0') == '1'
     totp_secrets = {}
@@ -1167,7 +1173,7 @@ def security_page():
 
 
 @app.route('/security/remote-access', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def toggle_remote_access():
     enabled = '1' if request.form.get('remote_access') else '0'
     db_module.set_setting('remote_access_enabled', enabled)
@@ -1180,7 +1186,7 @@ def toggle_remote_access():
 
 
 @app.route('/security/2fa/setup', methods=['GET', 'POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def setup_2fa():
     user = g.user
     if request.method == 'POST':
@@ -1204,7 +1210,7 @@ def setup_2fa():
 
 
 @app.route('/security/2fa/disable', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def disable_2fa():
     user = g.user
     db_module.disable_totp(user['id'])
@@ -1216,19 +1222,18 @@ def disable_2fa():
 # --- Settings ---
 
 @app.route('/settings', methods=['GET', 'POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def settings():
     if request.method == 'POST':
-        app_name = request.form.get('app_name', 'ChoreGremlin').strip()
-        theme_color = request.form.get('theme_color', '#00d9ff').strip()
-        brightness_mode = request.form.get('brightness_mode', 'dark').strip()
-        if brightness_mode not in ('dark', 'medium', 'light'):
-            brightness_mode = 'dark'
-        auto_update = '1' if request.form.get('auto_update_enabled') else '0'
-        db_module.set_setting('app_name', app_name)
-        db_module.set_setting('theme_color', theme_color)
-        db_module.set_setting('brightness_mode', brightness_mode)
-        db_module.set_setting('auto_update_enabled', auto_update)
+        for field in SETTINGS:
+            key = field['key']
+            if field['type'] == 'toggle':
+                value = '1' if request.form.get(key) else '0'
+            else:
+                value = request.form.get(key, field['default']).strip()
+                if field['type'] == 'radio' and value not in [c['value'] for c in field['choices']]:
+                    value = field['default']
+            db_module.set_setting(key, value)
         # Stat icon customization
         for stat_key in ['stat_icon_earned', 'stat_icon_chores', 'stat_icon_progress']:
             emoji_val = request.form.get(f'{stat_key}_emoji', '').strip()
@@ -1237,51 +1242,45 @@ def settings():
             else:
                 photo = request.files.get(f'{stat_key}_photo')
                 if photo and photo.filename:
-                    photo_path = save_photo(photo, prefix=stat_key)
+                    photo_path = save_image(photo, app.config['UPLOAD_FOLDER'], stat_key)
                     if photo_path:
                         db_module.set_setting(stat_key, f'photo:{photo_path}')
         wallpaper = request.files.get('wallpaper')
         if wallpaper and wallpaper.filename:
-            wp_path = save_wallpaper(wallpaper)
+            wp_path = save_image(wallpaper, app.config['UPLOAD_FOLDER'], 'wallpaper')
             if wp_path:
                 db_module.set_setting('wallpaper', wp_path)
         logo = request.files.get('logo')
         if logo and logo.filename:
-            logo_path = save_photo(logo, prefix='logo')
+            logo_path = save_image(logo, app.config['UPLOAD_FOLDER'], 'logo')
             if logo_path:
                 db_module.set_setting('family_logo', logo_path)
         db_module.log_activity(session.get('user_id'), 'update_settings', 'Updated settings')
         flash('Settings saved.', 'success')
         return redirect(url_for('settings'))
-    current_name = db_module.get_setting('app_name', 'ChoreGremlin')
-    theme_color = db_module.get_setting('theme_color', '#00d9ff')
-    brightness_mode = db_module.get_setting('brightness_mode', 'dark')
+    setting_values = {f['key']: db_module.get_setting(f['key'], f['default']) for f in SETTINGS}
     family_logo = db_module.get_setting('family_logo', '')
     wallpaper = db_module.get_setting('wallpaper', '')
-    auto_update = db_module.get_setting('auto_update_enabled', '1')
-    retention_stats = db_module.get_retention_stats()
     stat_icons = {
         'earned': db_module.get_setting('stat_icon_earned', ''),
         'chores': db_module.get_setting('stat_icon_chores', ''),
         'progress': db_module.get_setting('stat_icon_progress', ''),
     }
-    return render_template('settings.html', current_name=current_name,
-                           theme_color=theme_color, brightness_mode=brightness_mode,
+    return render_template('settings.html', fields=SETTINGS, setting_values=setting_values,
                            family_logo=family_logo, wallpaper=wallpaper,
-                           auto_update=auto_update, retention_stats=retention_stats,
                            stat_icons=stat_icons)
 
 
 # --- Backup / Restore ---
 
 @app.route('/backup')
-@login_required(roles=['admin'])
+@require_role('admin')
 def backup_page():
     return render_template('backup.html')
 
 
 @app.route('/backup/download')
-@login_required(roles=['admin'])
+@require_role('admin')
 def backup_download():
     import shutil
     import tempfile
@@ -1304,7 +1303,7 @@ def backup_download():
 
 
 @app.route('/backup/restore', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def backup_restore():
     import shutil
     import tempfile
@@ -1338,7 +1337,7 @@ def backup_restore():
 # --- System & Maintenance ---
 
 @app.route('/system')
-@login_required(roles=['admin'])
+@require_role('admin')
 def system_info():
     import subprocess
     net = get_network_info()
@@ -1410,32 +1409,15 @@ def system_info():
     except Exception:
         sys_info['update_timer'] = 'unknown'
 
-    try:
-        result = subprocess.run(['systemctl', 'is-active', 'choregremlin-cleanup.timer'],
-                               capture_output=True, text=True, timeout=5)
-        sys_info['cleanup_timer'] = result.stdout.strip()
-    except Exception:
-        sys_info['cleanup_timer'] = 'unknown'
-
-    retention_stats = db_module.get_retention_stats()
+    record_counts = db_module.get_record_counts()
     auto_update = db_module.get_setting('auto_update_enabled', '1')
 
     return render_template('system.html', net=net, sys_info=sys_info,
-                           retention_stats=retention_stats, auto_update=auto_update)
-
-
-@app.route('/system/cleanup', methods=['POST'])
-@login_required(roles=['admin'])
-def trigger_cleanup():
-    result = db_module.cleanup_old_records(365)
-    db_module.log_activity(session.get('user_id'), 'cleanup',
-                           f"Deleted {result['chore_logs']} old logs, {result['activity']} activity entries")
-    flash(f'Cleanup done: {result["chore_logs"]} old chore logs, {result["activity"]} activity entries removed.', 'success')
-    return redirect(url_for('system_info'))
+                           record_counts=record_counts, auto_update=auto_update)
 
 
 @app.route('/system/check-update', methods=['POST'])
-@login_required(roles=['admin'])
+@require_role('admin')
 def check_update():
     import subprocess
     output = ''
@@ -1463,14 +1445,14 @@ def check_update():
 # --- Chore Approval ---
 
 @app.route('/approvals')
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def approvals():
     pending = db_module.get_pending_approvals()
     return render_template('approvals.html', pending=pending)
 
 
 @app.route('/approvals/<int:log_id>/approve', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def approve_chore(log_id):
     log = db_module.approve_chore(log_id, session.get('user_id'))
     if log:
@@ -1490,7 +1472,7 @@ def approve_chore(log_id):
 
 
 @app.route('/approvals/<int:log_id>/reject', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def reject_chore(log_id):
     log = db_module.reject_chore(log_id)
     if log:
@@ -1505,7 +1487,7 @@ def reject_chore(log_id):
 # --- Drop Chores ---
 
 @app.route('/drop-chores')
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def manage_drop_chores():
     db_module.update_drop_chore_points()
     drops = db_module.get_active_drop_chores()
@@ -1513,7 +1495,7 @@ def manage_drop_chores():
 
 
 @app.route('/drop-chores/add', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def add_drop_chore():
     name = request.form.get('name', '').strip()
     initial_points = float(request.form.get('initial_points', 0) or 0)
@@ -1526,7 +1508,7 @@ def add_drop_chore():
     chore_image = ''
     img_file = request.files.get('chore_image')
     if img_file and img_file.filename:
-        chore_image = save_photo(img_file, prefix='drop')
+        chore_image = save_image(img_file, app.config['UPLOAD_FOLDER'], 'drop')
     db_module.create_drop_chore(name, initial_points, decay_per_minute,
                                 chore_emoji=chore_emoji, chore_image=chore_image,
                                 created_by=session.get('user_id'), expires_minutes=expires_minutes)
@@ -1536,7 +1518,7 @@ def add_drop_chore():
 
 
 @app.route('/drop-chores/<int:drop_id>/delete', methods=['POST'])
-@login_required(roles=['admin', 'parent'])
+@require_role('admin', 'parent')
 def delete_drop_chore(drop_id):
     db_module.delete_drop_chore(drop_id)
     flash('Drop chore removed.', 'info')

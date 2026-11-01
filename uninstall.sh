@@ -32,20 +32,16 @@ KEEP_DATA=${KEEP_DATA:-y}
 echo "Stopping services..."
 systemctl stop choregremlin.service 2>/dev/null || true
 systemctl stop choregremlin-update.timer 2>/dev/null || true
-systemctl stop choregremlin-cleanup.timer 2>/dev/null || true
 systemctl stop choregremlin-backup.timer 2>/dev/null || true
 
 systemctl disable choregremlin.service 2>/dev/null || true
 systemctl disable choregremlin-update.timer 2>/dev/null || true
-systemctl disable choregremlin-cleanup.timer 2>/dev/null || true
 systemctl disable choregremlin-backup.timer 2>/dev/null || true
 
 # Remove systemd files
 rm -f /etc/systemd/system/choregremlin.service
 rm -f /etc/systemd/system/choregremlin-update.service
 rm -f /etc/systemd/system/choregremlin-update.timer
-rm -f /etc/systemd/system/choregremlin-cleanup.service
-rm -f /etc/systemd/system/choregremlin-cleanup.timer
 rm -f /etc/systemd/system/choregremlin-backup.service
 rm -f /etc/systemd/system/choregremlin-backup.timer
 systemctl daemon-reload
