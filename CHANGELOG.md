@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Kiosk PINs are stored hashed, with a 5-minute lockout after 5 wrong attempts
 - CSRF protection on all forms and form-style requests
 - Fixed the app failing to start: rebuilt the registry (ten currencies with codes, one settings list, one navigation list) and imported the navigation list and settings fields into the app
+- Added a command-line tool to change a user's password, with a backup taken first and a 10-character minimum; a new install now starts with an empty database
 - Data folder defaults to /var/lib/choregremlin, refuses locations inside the project, and copies an existing database once without overwriting
 - Currency list (ten currencies, GBP default) in the settings registry
 - Clock helper: times stored in UTC and shown in local time

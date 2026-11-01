@@ -390,7 +390,10 @@ import db
 with app.app_context():
     db.init_db()
     if db.is_setup_complete():
-        print('Admin account already exists. Existing accounts were left unchanged.')
+        admin = db.get_all_users('admin')[0]
+        db.set_password(admin['id'], os.environ['ADMIN_PASSWORD'])
+        db.update_user(admin['id'], username=os.environ['ADMIN_USERNAME'])
+        print('Admin password updated. Other accounts were left unchanged.')
     else:
         db.create_user(os.environ['ADMIN_NAME'], None, os.environ['ADMIN_PASSWORD'], 'admin',
                        username=os.environ['ADMIN_USERNAME'])

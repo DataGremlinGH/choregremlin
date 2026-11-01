@@ -5,7 +5,6 @@ Handles schema initialization and all data access.
 
 import sqlite3
 import os
-import shutil
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 import clock
@@ -13,7 +12,6 @@ import clock
 _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get('CHOREGREMLIN_DATA_DIR', '/var/lib/choregremlin')
 DB_PATH = os.path.join(DATA_DIR, 'choregremlin.db')
-LEGACY_DB_PATH = os.path.join(_REPO_DIR, 'instance', 'choregremlin.db')
 PIN_MAX_FAILURES = 5
 PIN_LOCKOUT_MINUTES = 5
 
@@ -227,18 +225,8 @@ def _backup_database():
     print(f'Database backed up to {dest} before migrations.')
 
 
-def _copy_legacy_database():
-    """Copy the database from the project folder into the data folder once, never overwriting."""
-    if os.path.exists(DB_PATH) or not os.path.exists(LEGACY_DB_PATH):
-        return
-    os.makedirs(DATA_DIR, exist_ok=True)
-    shutil.copy2(LEGACY_DB_PATH, DB_PATH)
-    print(f'Copied database from {LEGACY_DB_PATH} to {DB_PATH}. The original was left in place.')
-
-
 def init_db():
     """Create the schema, then apply numbered migrations that are not yet recorded."""
-    _copy_legacy_database()
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     had_tables = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0] > 0
