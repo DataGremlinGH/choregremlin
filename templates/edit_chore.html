@@ -3,7 +3,7 @@
 {% block title %}Edit Chore - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='chores') }}
-<div class="container-fluid px-3 px-lg-4 py-4" style="max-width:600px;">
+<div class="fh-page fh-page--form">
   <div class="mb-3">
     <a href="{{ url_for('manage_chores') }}" class="fh-link"><i class="bi bi-arrow-left"></i> Back to Chores</a>
   </div>
@@ -31,11 +31,15 @@
           </div>
         </div>
         <div class="row g-3 mt-1">
+          <div class="col-12">
+            {% set selected_icon = chore['chore_image'][12:] if chore['chore_image'] and chore['chore_image'].startswith('chore-icons/') else '' %}
+            {% include '_chore_icon_picker.html' %}
+          </div>
           <div class="col-md-6">
-            <label class="fh-label">Image (optional)</label>
+            <label class="fh-label">Browse for your own image</label>
             <input type="file" name="chore_image" class="form-control fh-input" accept="image/*">
             {% if chore['chore_image'] %}
-            <div class="mt-1"><img src="/static/{{ chore['chore_image'] }}" alt="" style="width:40px;height:40px;border-radius:8px;"> <span class="text-muted small">Current image</span></div>
+            <div class="mt-1"><img src="{{ chore_image_url(chore['chore_image']) }}" alt="" style="width:40px;height:40px;border-radius:8px;"> <span class="text-muted small">Current image</span></div>
             {% endif %}
           </div>
           <div class="col-md-6">

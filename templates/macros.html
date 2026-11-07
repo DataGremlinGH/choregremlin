@@ -1,84 +1,193 @@
+{% macro brand_logo(subtitle=True) %}
+<a class="fh-brand" href="{{ url_for('dashboard') }}">
+  <span class="fh-brand-mark">
+    {% if family_logo %}
+    <img src="/static/{{ family_logo }}" alt="">
+    {% else %}
+    <i class="bi bi-stars"></i>
+    {% endif %}
+  </span>
+  <span class="fh-brand-text">
+    {{ app_name|default('Chore Gremlin') }}
+    {% if subtitle %}<span class="fh-brand-sub">Family command centre</span>{% endif %}
+  </span>
+</a>
+{% endmacro %}
+
 {% macro nav(active='') %}
-<nav class="fh-nav navbar navbar-expand-lg sticky-top">
-  <div class="container-fluid px-2 px-lg-3">
-    <div class="d-flex align-items-center justify-content-between w-100">
-      <a class="navbar-brand fh-brand" href="{{ url_for('dashboard') }}">
-        <i class="bi bi-house-fill"></i>
-        <span class="d-none d-sm-inline">{{ app_name }}</span>
+{% set visible = NAV_ITEMS if (g.user and g.user['role'] == 'admin') else NAV_ITEMS|rejectattr('admin_only')|list %}
+{% set primary = visible|selectattr('mobile')|list %}
+{% set overflow = visible|rejectattr('mobile')|list %}
+{% set primary_keys = primary|map(attribute='key')|list %}
+{% set more_active = active and active not in primary_keys %}
+<div class="fh-app-nav">
+  <aside class="fh-sidebar" aria-label="Main navigation">
+    <div class="fh-sidebar-brand">{{ brand_logo() }}</div>
+
+    <div class="fh-sidebar-section">
+      <div class="fh-sidebar-title">Home</div>
+      {% for item in visible if item.row == 1 %}
+      <a href="{{ url_for(item.endpoint) }}" class="fh-sidebar-link {{ 'active' if active == item.key else '' }}" {{ 'aria-current="page"'|safe if active == item.key else '' }}>
+        <i class="bi {{ item.icon }}"></i><span>{{ item.label }}</span>
       </a>
-      <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
-        <i class="bi bi-list fs-3 text-cyan"></i>
-      </button>
+      {% endfor %}
     </div>
-    <div class="collapse navbar-collapse" id="navMain">
-      <div class="fh-nav-rows">
-        <ul class="navbar-nav fh-nav-row me-auto">
-          <li><a href="{{ url_for('dashboard') }}" class="nav-link fh-nav-link {{ 'active' if active == 'dashboard' else '' }}">
-            <i class="bi bi-speedometer2"></i><span class="d-none d-md-inline"> Dashboard</span>
-          </a></li>
-          <li><a href="{{ url_for('family_dashboard') }}" class="nav-link fh-nav-link {{ 'active' if active == 'family' else '' }}">
-            <i class="bi bi-house-heart-fill"></i><span class="d-none d-md-inline"> Family</span>
-          </a></li>
-          <li><a href="{{ url_for('manage_kids') }}" class="nav-link fh-nav-link {{ 'active' if active == 'kids' else '' }}">
-            <i class="bi bi-people-fill"></i><span class="d-none d-md-inline"> Kids</span>
-          </a></li>
-          <li><a href="{{ url_for('manage_chores') }}" class="nav-link fh-nav-link {{ 'active' if active == 'chores' else '' }}">
-            <i class="bi bi-list-check"></i><span class="d-none d-md-inline"> Chores</span>
-          </a></li>
-          <li><a href="{{ url_for('manage_drop_chores') }}" class="nav-link fh-nav-link {{ 'active' if active == 'drop' else '' }}">
-            <i class="bi bi-droplet-fill"></i><span class="d-none d-md-inline"> Drop</span>
-          </a></li>
-          <li><a href="{{ url_for('manage_payments') }}" class="nav-link fh-nav-link {{ 'active' if active == 'payments' else '' }}">
-            <i class="bi bi-cash-coin"></i><span class="d-none d-md-inline"> Pay</span>
-          </a></li>
-          <li><a href="{{ url_for('approvals') }}" class="nav-link fh-nav-link {{ 'active' if active == 'approvals' else '' }}">
-            <i class="bi bi-clipboard-check-fill"></i><span class="d-none d-md-inline"> Approve</span>
-          </a></li>
-        </ul>
-        <ul class="navbar-nav fh-nav-row me-auto">
-          <li><a href="{{ url_for('manage_notices') }}" class="nav-link fh-nav-link {{ 'active' if active == 'notices' else '' }}">
-            <i class="bi bi-megaphone-fill"></i><span class="d-none d-md-inline"> Notices</span>
-          </a></li>
-          <li><a href="{{ url_for('manage_events') }}" class="nav-link fh-nav-link {{ 'active' if active == 'events' else '' }}">
-            <i class="bi bi-calendar-event-fill"></i><span class="d-none d-md-inline"> Events</span>
-          </a></li>
-          <li><a href="{{ url_for('view_logs') }}" class="nav-link fh-nav-link {{ 'active' if active == 'logs' else '' }}">
-            <i class="bi bi-clock-history"></i><span class="d-none d-md-inline"> History</span>
-          </a></li>
-          {% if g.user and g.user['role'] == 'admin' %}
-          <li><a href="{{ url_for('manage_parents') }}" class="nav-link fh-nav-link {{ 'active' if active == 'parents' else '' }}">
-            <i class="bi bi-shield-lock"></i><span class="d-none d-md-inline"> Users</span>
-          </a></li>
-          <li><a href="{{ url_for('currency_page') }}" class="nav-link fh-nav-link {{ 'active' if active == 'currency' else '' }}">
-            <i class="bi bi-coin"></i><span class="d-none d-md-inline"> Currency</span>
-          </a></li>
-          <li><a href="{{ url_for('storage_page') }}" class="nav-link fh-nav-link {{ 'active' if active == 'storage' else '' }}">
-            <i class="bi bi-device-hdd"></i><span class="d-none d-md-inline"> Storage</span>
-          </a></li>
-          <li><a href="{{ url_for('network_settings') }}" class="nav-link fh-nav-link {{ 'active' if active == 'network' else '' }}">
-            <i class="bi bi-wifi"></i><span class="d-none d-md-inline"> Network</span>
-          </a></li>
-          <li><a href="{{ url_for('security_page') }}" class="nav-link fh-nav-link {{ 'active' if active == 'security' else '' }}">
-            <i class="bi bi-shield-fill"></i><span class="d-none d-md-inline"> Security</span>
-          </a></li>
-          <li><a href="{{ url_for('backup_page') }}" class="nav-link fh-nav-link {{ 'active' if active == 'backup' else '' }}">
-            <i class="bi bi-shield-fill-check"></i><span class="d-none d-md-inline"> Backup</span>
-          </a></li>
-          <li><a href="{{ url_for('system_info') }}" class="nav-link fh-nav-link {{ 'active' if active == 'system' else '' }}">
-            <i class="bi bi-cpu"></i><span class="d-none d-md-inline"> System</span>
-          </a></li>
-          <li><a href="{{ url_for('settings') }}" class="nav-link fh-nav-link {{ 'active' if active == 'settings' else '' }}">
-            <i class="bi bi-gear"></i><span class="d-none d-md-inline"> Settings</span>
-          </a></li>
-          {% endif %}
-        </ul>
-      </div>
-      <div class="d-flex align-items-center gap-2 fh-nav-user">
-        <a href="{{ url_for('kiosk_login') }}" class="btn btn-sm fh-btn-cyan" title="Kiosk mode">
-          <i class="bi bi-tablet"></i> Kiosk
-        </a>
-      </div>
+
+    <div class="fh-sidebar-section fh-sidebar-admin">
+      <div class="fh-sidebar-title">Manage</div>
+      {% for item in visible if item.row == 2 %}
+      <a href="{{ url_for(item.endpoint) }}" class="fh-sidebar-link {{ 'active' if active == item.key else '' }}" {{ 'aria-current="page"'|safe if active == item.key else '' }}>
+        <i class="bi {{ item.icon }}"></i><span>{{ item.label }}</span>
+      </a>
+      {% endfor %}
     </div>
+
+    <div class="fh-sidebar-footer">
+      <a href="{{ url_for('kiosk_login') }}" class="fh-sidebar-kiosk">
+        <i class="bi bi-tablet-landscape"></i> Open Kiosk Mode
+      </a>
+    </div>
+  </aside>
+
+  <header class="fh-mobile-topbar">
+    {{ brand_logo(False) }}
+    <a href="{{ url_for('kiosk_login') }}" class="fh-mobile-kiosk">
+      <i class="bi bi-tablet-landscape"></i><span>Kiosk</span>
+    </a>
+  </header>
+
+  <nav class="fh-bottom-nav" aria-label="Primary navigation">
+    {% for item in primary %}
+    <a href="{{ url_for(item.endpoint) }}" class="fh-bottom-link {{ 'active' if active == item.key else '' }}" {{ 'aria-current="page"'|safe if active == item.key else '' }}>
+      <i class="bi {{ item.icon }}"></i><span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+    <button type="button" class="fh-bottom-more {{ 'active' if more_active else '' }}"
+            data-fh-more-open aria-controls="fhMoreSheet" aria-expanded="false">
+      <i class="bi bi-grid-3x3-gap-fill"></i><span>More</span>
+    </button>
+  </nav>
+
+  <div class="fh-more-backdrop" data-fh-more-close></div>
+  <section class="fh-more-sheet" id="fhMoreSheet" aria-label="More navigation">
+    <div class="fh-more-handle"></div>
+    <div class="fh-more-section-title">Family</div>
+    <div class="fh-more-grid">
+      {% for item in overflow if item.row == 1 %}
+      <a href="{{ url_for(item.endpoint) }}" class="fh-more-item {{ 'active' if active == item.key else '' }}" {{ 'aria-current="page"'|safe if active == item.key else '' }}>
+        <i class="bi {{ item.icon }}"></i><span>{{ item.label }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <div class="fh-more-section-title">Manage</div>
+    <div class="fh-more-grid">
+      {% for item in overflow if item.row == 2 %}
+      <a href="{{ url_for(item.endpoint) }}" class="fh-more-item {{ 'active' if active == item.key else '' }}" {{ 'aria-current="page"'|safe if active == item.key else '' }}>
+        <i class="bi {{ item.icon }}"></i><span>{{ item.label }}</span>
+      </a>
+      {% endfor %}
+      <a href="{{ url_for('kiosk_login') }}" class="fh-more-item">
+        <i class="bi bi-tablet-landscape"></i><span>Kiosk</span>
+      </a>
+    </div>
+  </section>
+</div>
+{% endmacro %}
+
+{% macro icon_button(label, icon, href=None, variant='primary', size='', class_name='', type='button', attrs='') %}
+{% set variants = {
+  'primary': 'fh-btn-cyan',
+  'success': 'fh-btn-success',
+  'danger': 'fh-btn-danger',
+  'outline': 'fh-btn-outline',
+  'cancel': 'fh-btn-cancel'
+} %}
+{% set size_class = 'btn-sm' if size == 'sm' else ('fh-btn-lg' if size == 'lg' else '') %}
+{% if href %}
+<a href="{{ href }}" class="btn {{ variants.get(variant, 'fh-btn-cyan') }} {{ size_class }} {{ class_name }}" {{ attrs|safe }}>
+  <i class="bi {{ icon }}"></i><span>{{ label }}</span>
+</a>
+{% else %}
+<button type="{{ type }}" class="btn {{ variants.get(variant, 'fh-btn-cyan') }} {{ size_class }} {{ class_name }}" {{ attrs|safe }}>
+  <i class="bi {{ icon }}"></i><span>{{ label }}</span>
+</button>
+{% endif %}
+{% endmacro %}
+
+{% macro progress_donut(value, max=100, size=72, stroke=7, label=None, caption='', class_name='') %}
+{% set pct = (value|float / max|float * 100) if max|float > 0 else 0 %}
+{% set pct = 0 if pct < 0 else (100 if pct > 100 else pct) %}
+{% set radius = (size|int - stroke|int) / 2 %}
+{% set circumference = 2 * 3.14159265 * radius %}
+{% set offset = circumference * (1 - pct / 100) %}
+<div class="fh-donut {{ class_name }}" style="width:{{ size }}px;height:{{ size }}px"
+     role="img" aria-label="{{ label if label is not none else pct|round|int ~ '%' }}">
+  <svg width="{{ size }}" height="{{ size }}" viewBox="0 0 {{ size }} {{ size }}" aria-hidden="true">
+    <circle class="fh-donut-track" cx="{{ size|int / 2 }}" cy="{{ size|int / 2 }}" r="{{ radius }}" stroke-width="{{ stroke }}"></circle>
+    <circle class="fh-donut-value" cx="{{ size|int / 2 }}" cy="{{ size|int / 2 }}" r="{{ radius }}" stroke-width="{{ stroke }}"
+            stroke-dasharray="{{ circumference }}" stroke-dashoffset="{{ offset }}"></circle>
+  </svg>
+  <div class="fh-donut-label">
+    {{ label if label is not none else pct|round|int ~ '%' }}
+    {% if caption %}<span class="fh-donut-caption">{{ caption }}</span>{% endif %}
   </div>
-</nav>
+</div>
+{% endmacro %}
+
+{% macro page_header(title, icon, subtitle='') %}
+<div class="fh-page-header">
+  <div>
+    <h2 class="fh-page-title"><i class="bi {{ icon }}"></i> {{ title }}</h2>
+    {% if subtitle %}<p class="text-muted mb-0">{{ subtitle }}</p>{% endif %}
+  </div>
+  <div class="d-flex align-items-center gap-2 flex-wrap">{{ caller() if caller is defined else '' }}</div>
+</div>
+{% endmacro %}
+
+{% macro setting_field(field, value) %}
+{% if field.type == 'text' %}
+<div class="mb-3">
+  <label class="fh-label">{{ field.label }}</label>
+  <input type="text" name="{{ field.key }}" class="form-control fh-input" value="{{ value }}" required>
+  <div class="form-text">{{ field.help }}</div>
+</div>
+{% elif field.type == 'color' %}
+<div class="mb-3">
+  <label class="fh-label">{{ field.label }}</label>
+  <div class="d-flex align-items-center gap-2">
+    <input type="color" name="{{ field.key }}" class="form-control form-control-color fh-input" value="{{ value }}" style="width:60px;height:42px;">
+    <span class="text-muted">{{ value }}</span>
+  </div>
+  <div class="form-text">{{ field.help }}</div>
+</div>
+{% elif field.type == 'radio' %}
+<div class="mb-3">
+  <label class="fh-label">{{ field.label }}</label>
+  <div class="d-flex gap-2 flex-wrap">
+    {% for choice in field.choices %}
+    <div class="form-check">
+      <input class="form-check-input" type="radio" name="{{ field.key }}" id="bm-{{ choice.value }}" value="{{ choice.value }}" {{ 'checked' if value == choice.value else '' }}>
+      <label class="form-check-label fh-check-label" for="bm-{{ choice.value }}">
+        <i class="bi {{ choice.icon }}"></i> {{ choice.label }}
+      </label>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="form-text">{{ field.help }}</div>
+</div>
+{% elif field.type == 'toggle' %}
+<div class="mb-3">
+  <div class="form-check fh-check">
+    <input class="form-check-input" type="checkbox" name="{{ field.key }}" id="setting-{{ field.key }}" {{ 'checked' if value == '1' else '' }}>
+    <label class="form-check-label fh-check-label" for="setting-{{ field.key }}">
+      <i class="bi {{ field.icon }} text-cyan"></i> {{ field.label }}
+    </label>
+  </div>
+  <div class="form-text">{{ field.help }}</div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro token(amount, icon, convert_value=None, symbol='') %}
+<span class="fh-token">{{ icon|safe }} {{ "%.2f"|format(amount) }}{% if convert_value is not none %} <span class="fh-token-gbp">({{ symbol }}{{ "%.2f"|format(convert_value) }})</span>{% endif %}</span>
 {% endmacro %}

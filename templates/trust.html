@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}Trust This Device - {{ app_name }}{% endblock %}
+{% block body %}
+<div class="fh-page fh-page--narrow">
+  <h2 class="fh-page-title mb-4"><i class="bi bi-patch-check-fill"></i> Trust This Device</h2>
+
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-shield-lock-fill"></i> Private HTTPS Certificate</div>
+    <div class="fh-card-body">
+      {% if net.https %}
+      <p class="text-muted">This hub uses HTTPS with a private certificate created on your Raspberry Pi. Installing the certificate below tells your device to trust this hub on your home network.</p>
+      <div class="fh-net-info-grid mb-3">
+        <div class="fh-net-info-item">
+          <div class="fh-net-info-label"><i class="bi bi-globe"></i> By IP</div>
+          <div class="fh-net-info-value fh-net-url">{{ net.app_url }}</div>
+        </div>
+        <div class="fh-net-info-item">
+          <div class="fh-net-info-label"><i class="bi bi-house-door"></i> By Local Name</div>
+          <div class="fh-net-info-value fh-net-url">{{ net.local_url }}</div>
+        </div>
+      </div>
+      {% if ca_available %}
+      <a href="{{ url_for('trust_ca') }}" class="btn fh-btn-cyan"><i class="bi bi-download"></i> Download Trust Certificate</a>
+      {% else %}
+      <div class="alert alert-warning fh-alert mb-0">
+        <i class="bi bi-exclamation-triangle"></i> The certificate file has not been created yet. Re-run the installer with HTTPS enabled, or restart Caddy and refresh this page.
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="alert alert-info fh-alert mb-0">
+        <i class="bi bi-info-circle"></i> HTTPS is not enabled for this hub. HTTPS is optional on the home network; re-run the installer and choose HTTPS if you want an encrypted connection.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if net.https and ca_available %}
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-phone"></i> Install On Your Device</div>
+    <div class="fh-card-body">
+      <h3 class="fh-title h6 mt-1">iPhone or iPad</h3>
+      <ol class="fh-security-guide">
+        <li>Tap <strong>Download Trust Certificate</strong>, then allow the profile download.</li>
+        <li>Open <strong>Settings &rarr; General &rarr; VPN &amp; Device Management</strong> and install the Chore Gremlin profile.</li>
+        <li>Open <strong>Settings &rarr; General &rarr; About &rarr; Certificate Trust Settings</strong> and turn on full trust for <strong>Chore Gremlin Local CA</strong>.</li>
+        <li>Open <strong>{{ net.local_url }}</strong> and confirm the padlock appears.</li>
+      </ol>
+
+      <h3 class="fh-title h6 mt-4">Android</h3>
+      <ol class="fh-security-guide">
+        <li>Tap <strong>Download Trust Certificate</strong>.</li>
+        <li>Open <strong>Settings &rarr; Security &rarr; Encryption &amp; credentials &rarr; Install a certificate &rarr; CA certificate</strong>.</li>
+        <li>Choose the downloaded <strong>choregremlin-root.crt</strong> file and install it.</li>
+        <li>Open <strong>{{ net.local_url }}</strong> and confirm the padlock appears.</li>
+      </ol>
+
+      <h3 class="fh-title h6 mt-4">Windows or Mac</h3>
+      <ol class="fh-security-guide">
+        <li>Download the certificate and open it.</li>
+        <li>Windows: choose <strong>Install Certificate &rarr; Local Machine &rarr; Place all certificates in the following store &rarr; Trusted Root Certification Authorities</strong>.</li>
+        <li>Mac: add it to the <strong>System</strong> keychain and set it to <strong>Always Trust</strong>.</li>
+        <li>Open <strong>{{ net.local_url }}</strong> and confirm the padlock appears.</li>
+      </ol>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="fh-card">
+    <div class="fh-card-header"><i class="bi bi-info-circle"></i> Good To Know</div>
+    <div class="fh-card-body">
+      <ul class="fh-net-tips">
+        <li><i class="bi bi-arrow-right-short text-cyan"></i> The certificate only covers your home hub. Never install it on a device you do not control.</li>
+        <li><i class="bi bi-arrow-right-short text-cyan"></i> Use <strong>{{ net.local_url }}</strong> where possible; the IP address can change unless you reserve it in your router.</li>
+        <li><i class="bi bi-arrow-right-short text-cyan"></i> If you reinstall the hub, download and trust the new certificate.</li>
+        <li><i class="bi bi-arrow-right-short text-cyan"></i> <a href="{{ url_for('login') }}" class="fh-link">Return to sign in</a></li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

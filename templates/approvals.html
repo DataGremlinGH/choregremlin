@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import nav %}
+{% from 'macros.html' import nav, token %}
 {% block title %}Approvals - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='approvals') }}
-<div class="container-fluid px-3 px-lg-4 py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="fh-page">
+  <div class="fh-page-header">
     <h2 class="fh-page-title"><i class="bi bi-clipboard-check-fill"></i> Chore Approvals</h2>
     {% if pending %}
     <span class="badge bg-warning fs-6">{{ pending|length }} pending</span>
@@ -27,14 +27,14 @@
             </div>
             <div>
               <div class="fh-kid-manage-name">{{ log['user_name'] }}</div>
-              <div class="text-muted small">Completed {{ log['finished_at'][:16] }}</div>
+              <div class="text-muted small">Completed {{ log['finished_at']|localtime }}</div>
             </div>
           </div>
           <div class="fh-approval-chore">
             <div class="fh-approval-chore-icon"><i class="bi {{ log['chore_icon'] }}"></i></div>
             <div class="flex-fill">
               <div class="fh-approval-chore-name">{{ log['chore_name'] }}</div>
-              <div class="fh-approval-chore-pay text-success">{{ token_icon|safe }}{{ "%.2f"|format(log['earned_amount']) }}</div>
+              <div class="fh-approval-chore-pay text-success">{{ token(log['earned_amount'], token_icon) }}</div>
             </div>
           </div>
           <div class="d-flex gap-2 mt-3">

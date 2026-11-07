@@ -3,8 +3,8 @@
 {% block title %}Kids - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='kids') }}
-<div class="container-fluid px-3 px-lg-4 py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="fh-page">
+  <div class="fh-page-header">
     <h2 class="fh-page-title"><i class="bi bi-people-fill"></i> Manage Kids</h2>
     <button class="btn fh-btn-cyan" data-bs-toggle="modal" data-bs-target="#addKidModal">
       <i class="bi bi-person-plus-fill"></i> Add Kid
@@ -91,7 +91,7 @@
             </div>
             <div class="col-md-6">
               <label class="fh-label">Theme Colour</label>
-              <input type="color" name="color" class="form-control form-control-color fh-input" value="#00d9ff" style="height:42px;">
+              <input type="color" name="color" class="form-control form-control-color fh-input" value="#10b981" style="height:42px;">
             </div>
             <div class="col-12">
               <label class="fh-label">Status</label>

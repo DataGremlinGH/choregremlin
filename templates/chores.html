@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import nav %}
+{% from 'macros.html' import nav, token %}
 {% block title %}Chores - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='chores') }}
-<div class="container-fluid px-3 px-lg-4 py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="fh-page">
+  <div class="fh-page-header">
     <h2 class="fh-page-title"><i class="bi bi-list-check"></i> Manage Chores</h2>
     <button class="btn fh-btn-cyan" data-bs-toggle="modal" data-bs-target="#addChoreModal">
       <i class="bi bi-plus-circle-fill"></i> Add Chore
@@ -18,7 +18,7 @@
         <div class="d-flex align-items-start justify-content-center mb-2">
           <div class="fh-chore-icon">
             {% if chore['chore_image'] %}
-            <img src="/static/{{ chore['chore_image'] }}" alt="" style="width:32px;height:32px;border-radius:8px;">
+            <img src="{{ chore_image_url(chore['chore_image']) }}" alt="" style="width:32px;height:32px;border-radius:8px;">
             {% elif chore['chore_emoji'] %}
             <span style="font-size:1.5rem;">{{ chore['chore_emoji'] }}</span>
             {% else %}
@@ -26,7 +26,7 @@
             {% endif %}
           </div>
         </div>
-        <span class="badge bg-success mb-2 d-inline-block">{{ token_icon|safe }}{{ "%.2f"|format(chore['pay_amount']) }}</span>
+        <span class="badge bg-success mb-2 d-inline-block">{{ token(chore['pay_amount'], token_icon) }}</span>
         <h6 class="fh-chore-manage-name">{{ chore['name'] }}</h6>
         {% if chore['description'] %}<p class="text-muted small mb-2">{{ chore['description'] }}</p>{% endif %}
         <div class="mb-2 d-flex flex-wrap justify-content-center gap-1">
@@ -126,8 +126,11 @@
             </div>
           </div>
           <div class="row g-3 mt-1">
+            <div class="col-12">
+              {% include '_chore_icon_picker.html' %}
+            </div>
             <div class="col-md-6">
-              <label class="fh-label">Image (optional)</label>
+              <label class="fh-label">Browse for your own image</label>
               <input type="file" name="chore_image" class="form-control fh-input" accept="image/*">
             </div>
             <div class="col-md-6">

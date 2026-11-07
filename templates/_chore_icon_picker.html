@@ -1,0 +1,13 @@
+<div class="chore-icon-picker">
+  {% if chore_icons %}
+  <label class="fh-label" for="choreIconSelect">Icon</label>
+  <select name="chore_icon_file" id="choreIconSelect" class="form-select fh-input" style="min-height:44px;">
+    <option value="">No icon</option>
+    {% for icon in chore_icons %}
+    <option value="{{ icon }}"{% if icon == selected_icon %} selected{% endif %}>{{ chore_icon_label(icon) }}</option>
+    {% endfor %}
+  </select>
+  {% else %}
+  <div class="form-text">No icons found in the Chore_Images folder. Browse for your own image below instead.</div>
+  {% endif %}
+</div>

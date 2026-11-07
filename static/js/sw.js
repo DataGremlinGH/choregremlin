@@ -1,9 +1,10 @@
-// Family Hub Service Worker
-const CACHE_NAME = 'family-hub-v1';
+// Chore Gremlin Service Worker
+const CACHE_NAME = 'choregremlin-v3';
 const STATIC_ASSETS = [
   '/',
   '/static/css/bootstrap.min.css',
   '/static/css/family-hub.css',
+  '/static/css/tokens.css',
   '/static/js/bootstrap.bundle.min.js',
   '/static/js/family-hub.js',
   '/manifest.json',

@@ -3,7 +3,7 @@
 {% block title %}Security - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='security') }}
-<div class="container-fluid px-3 px-lg-4 py-4" style="max-width:700px;">
+<div class="fh-page fh-page--narrow">
   <h2 class="fh-page-title mb-4"><i class="bi bi-shield-fill"></i> Security</h2>
 
   <div class="fh-card mb-3">
@@ -17,7 +17,7 @@
           </label>
         </div>
         <div class="alert alert-warning fh-alert">
-          <strong>Before enabling:</strong> Set up HTTPS and 2FA first. Without HTTPS, your password is sent in plain text over the internet. Without 2FA, anyone who guesses your password can get in.
+          <strong>Before enabling:</strong> Set up HTTPS first, and make sure every parent account that can sign in remotely has 2FA. Administrator 2FA is already mandatory. Without HTTPS, your password is sent in plain text over the internet.
         </div>
         <button type="submit" class="btn fh-btn-cyan btn-sm"><i class="bi bi-check-lg"></i> Save</button>
       </form>
@@ -27,26 +27,21 @@
   <div class="fh-card mb-3">
     <div class="fh-card-header"><i class="bi bi-shield-lock-fill"></i> Two-Factor Authentication (2FA)</div>
     <div class="fh-card-body">
-      <p class="text-muted mb-2">Two-factor authentication adds a code from your phone as well as your password. It is <strong>only required when remote access is enabled</strong> &mdash; on your home Wi-Fi, a password alone is enough.</p>
-      {% if not remote_access %}
+      <p class="text-muted mb-2">Two-factor authentication adds a code from your phone as well as your password. <strong>Administrator accounts must use 2FA.</strong> Parents can turn it on for extra security.</p>
       <div class="alert alert-info fh-alert mb-3">
-        <i class="bi bi-info-circle"></i> 2FA is optional while remote access is off. Enable it if you want extra security, but it's not required on your local network.
+        <i class="bi bi-info-circle"></i> Administrator accounts are sent to the 2FA setup page automatically after signing in until an authenticator app is configured.
       </div>
-      {% else %}
-      <div class="alert alert-warning fh-alert mb-3">
-        <i class="bi bi-exclamation-triangle"></i> Remote access is on. 2FA is required for any account that has it set up. Set it up below before using the app remotely.
-      </div>
-      {% endif %}
-      {% if g.user['role'] == 'admin' or g.user['role'] == 'parent' %}
       <a href="{{ url_for('setup_2fa') }}" class="btn fh-btn-cyan btn-sm"><i class="bi bi-qr-code"></i> Set Up 2FA</a>
-      {% endif %}
       <div class="mt-3">
         {% for u in users %}
-          {% if u['id'] in totp_secrets %}
+          {% if u['role'] in ('admin', 'parent') %}
+          {% set totp = totp_secrets.get(u['id']) %}
           <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary">
-            <span><i class="bi bi-person-circle me-2"></i>{{ u['name'] }}</span>
-            {% if totp_secrets[u['id']]['enabled'] %}
+            <span><i class="bi bi-person-circle me-2"></i>{{ u['name'] }}{% if u['id'] == g.user['id'] %} <span class="text-muted small">(you)</span>{% endif %}</span>
+            {% if totp and totp['enabled'] %}
             <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> 2FA On</span>
+            {% elif u['role'] == 'admin' %}
+            <span class="badge bg-danger"><i class="bi bi-exclamation-triangle-fill"></i> Required</span>
             {% else %}
             <span class="badge bg-secondary">2FA Off</span>
             {% endif %}
@@ -54,6 +49,21 @@
           {% endif %}
         {% endfor %}
       </div>
+    </div>
+  </div>
+
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-patch-check-fill"></i> Local HTTPS &amp; Device Trust</div>
+    <div class="fh-card-body">
+      {% if https %}
+      <p class="text-muted mb-2">This home hub is using a private HTTPS certificate. Install the Chore Gremlin trust certificate on each phone, tablet or computer so the browser stops showing a security warning.</p>
+      {% else %}
+      <p class="text-muted mb-2">HTTPS is off. Re-run the installer and choose HTTPS if you want an encrypted connection and a private certificate for your devices.</p>
+      {% endif %}
+      <a href="{{ url_for('trust_page') }}" class="btn fh-btn-outline btn-sm"><i class="bi bi-shield-check"></i> Open Trust Page</a>
+      {% if https and ca_available %}
+      <a href="{{ url_for('trust_ca') }}" class="btn fh-btn-cyan btn-sm ms-2"><i class="bi bi-download"></i> Download Trust Certificate</a>
+      {% endif %}
     </div>
   </div>
 
@@ -76,7 +86,7 @@
                 <span class="badge bg-danger" title="{{ log['failure_reason'] }}">Fail</span>
                 {% endif %}
               </td>
-              <td class="small text-muted">{{ log['created_at'][:16] }}</td>
+              <td class="small text-muted">{{ log['created_at']|localtime }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -93,7 +103,7 @@
     <div class="fh-card-body">
       <p class="text-muted">If you enable remote access, you'll need to forward port <strong class="text-cyan">{{ net_port if net_port is defined else 8473 }}</strong> on your router to your Pi's IP address. Here's how to do it safely:</p>
       <ol class="fh-security-guide">
-        <li><strong>Set up HTTPS first.</strong> Use Caddy or Nginx with Let's Encrypt (for a domain name) or DuckDNS (for a dynamic IP). Without HTTPS, your login details travel in plain text.</li>
+        <li><strong>Set up HTTPS first.</strong> Re-run the installer and choose HTTPS to put Caddy in front of the hub with a private local certificate, or use your own reverse proxy with a public certificate if you expose the hub to the internet. Without HTTPS, your login details travel in plain text.</li>
         <li><strong>Enable 2FA.</strong> This means even if someone guesses your password, they still can't get in without the code from your phone.</li>
         <li><strong>Forward only the app port</strong> ({{ net_port if net_port is defined else 8473 }}) to the Pi. Don't forward any other ports.</li>
         <li><strong>Reserve your Pi's IP</strong> in your router's DHCP settings so it doesn't change.</li>

@@ -3,7 +3,7 @@
 {% block title %}Edit Kid - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='kids') }}
-<div class="container-fluid px-3 px-lg-4 py-4" style="max-width:600px;">
+<div class="fh-page fh-page--form">
   <div class="d-flex align-items-center gap-2 mb-4">
     <a href="{{ url_for('manage_kids') }}" class="fh-link"><i class="bi bi-arrow-left"></i> Back to Kids</a>
   </div>
@@ -40,7 +40,7 @@
           </div>
           <div class="col-md-6">
             <label class="fh-label">PIN (4-6 digits)</label>
-            <input type="text" name="pin" class="form-control fh-input" maxlength="6" pattern="[0-9]*" value="{{ child['pin'] or '' }}" placeholder="Leave empty for no PIN">
+            <input type="text" name="pin" class="form-control fh-input" maxlength="6" pattern="[0-9]*" placeholder="{{ 'Leave blank to keep the current PIN' if child['pin'] else 'Leave empty for no PIN' }}">
           </div>
           <div class="col-md-6">
             <label class="fh-label">Theme Colour</label>

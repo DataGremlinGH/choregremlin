@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import nav %}
+{% from 'macros.html' import nav, token %}
 {% block title %}Drop Chores - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='drop') }}
-<div class="container-fluid px-3 px-lg-4 py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="fh-page">
+  <div class="fh-page-header">
     <h2 class="fh-page-title"><i class="bi bi-droplet-fill"></i> Drop Chores</h2>
     <button class="btn fh-btn-cyan" data-bs-toggle="modal" data-bs-target="#addDropModal">
       <i class="bi bi-plus-circle-fill"></i> Post Drop Chore
@@ -29,13 +29,13 @@
             <i class="bi bi-droplet-fill"></i>
             {% endif %}
           </div>
-          <span class="badge bg-success fs-6">{{ token_icon|safe }}{{ "%.2f"|format(drop['current_points']) }}</span>
+          <span class="badge bg-success fs-6">{{ token(drop['current_points'], token_icon) }}</span>
         </div>
         <h6>{{ drop['name'] }}</h6>
         <div class="text-muted small mb-2">
-          Started: {{ drop['posted_at'][:16] }}<br>
+          Started: {{ drop['posted_at']|localtime }}<br>
           Decay: {{ drop['decay_per_minute'] }} {{ token_plural }}/min<br>
-          {% if drop['expires_at'] %}Expires: {{ drop['expires_at'][:16] }}{% endif %}
+          {% if drop['expires_at'] %}Expires: {{ drop['expires_at']|localtime }}{% endif %}
         </div>
         <form method="POST" action="{{ url_for('delete_drop_chore', drop_id=drop['id']) }}" onsubmit="return confirm('Remove this drop chore?')">
           <button class="btn btn-sm fh-btn-danger"><i class="bi bi-trash"></i> Remove</button>

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from 'macros.html' import token %}
 {% block title %}{{ child['name'] }} - {{ app_name }}{% endblock %}
 {% block body %}
 {% if child['wallpaper'] %}
@@ -19,9 +20,9 @@
         <div class="fh-kiosk-name" style="color: {{ child['color'] }};">{{ child['name'] }}</div>
         <div class="fh-kiosk-balance">
           <i class="bi bi-cash-coin"></i>
-          Balance: {{ token_icon|safe }}{{ "%.2f"|format(balance) }}
+          Balance: {{ token(balance, token_icon) }}
           {% if my_earnings and my_earnings['total_earned'] > 0 %}
-          | This month: {{ token_icon|safe }}{{ "%.2f"|format(my_earnings['total_earned']) }}
+          | This month: {{ token(my_earnings['total_earned'], token_icon) }}
           {% endif %}
         </div>
       </div>
@@ -85,7 +86,7 @@
         {% endif %}
         <div class="fh-chore-icon">
           {% if chore['chore_image'] %}
-          <img src="/static/{{ chore['chore_image'] }}" alt="" style="width:32px;height:32px;border-radius:8px;">
+          <img src="{{ chore_image_url(chore['chore_image']) }}" alt="" style="width:32px;height:32px;border-radius:8px;">
           {% elif chore['chore_emoji'] %}
           <span style="font-size:1.5rem;">{{ chore['chore_emoji'] }}</span>
           {% else %}
@@ -94,7 +95,7 @@
         </div>
         <div class="fh-chore-name">{{ chore['name'] }}</div>
         <div class="fh-chore-pay">
-          <i class="bi bi-cash"></i> {{ token_icon|safe }}{{ "%.2f"|format(chore['pay_amount']) }}
+          <i class="bi bi-cash"></i> {{ token(chore['pay_amount'], token_icon) }}
         </div>
         {% if chore['single_child_only'] %}
         <div class="fh-chore-solo"><i class="bi bi-person-lock"></i> One at a time</div>

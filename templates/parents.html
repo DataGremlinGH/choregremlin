@@ -3,8 +3,8 @@
 {% block title %}Users - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='parents') }}
-<div class="container-fluid px-3 px-lg-4 py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="fh-page">
+  <div class="fh-page-header">
     <h2 class="fh-page-title"><i class="bi bi-shield-lock"></i> Manage Users</h2>
     <button class="btn fh-btn-cyan" data-bs-toggle="modal" data-bs-target="#addUserModal">
       <i class="bi bi-person-plus-fill"></i> Add User
@@ -43,7 +43,7 @@
                 <form method="POST" action="{{ url_for('reset_password', parent_id=a['id']) }}">
                   <div class="modal-body">
                     <label class="fh-label">New Password for {{ a['name'] }}</label>
-                    <input type="password" name="password" class="form-control fh-input" required minlength="6" placeholder="At least 6 characters">
+                    <input type="password" name="password" class="form-control fh-input" required minlength="10" placeholder="At least 10 characters">
                   </div>
                   <div class="modal-footer fh-modal-footer">
                     <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
@@ -88,7 +88,7 @@
                 <form method="POST" action="{{ url_for('reset_password', parent_id=p['id']) }}">
                   <div class="modal-body">
                     <label class="fh-label">New Password for {{ p['name'] }}</label>
-                    <input type="password" name="password" class="form-control fh-input" required minlength="6" placeholder="At least 6 characters">
+                    <input type="password" name="password" class="form-control fh-input" required minlength="10" placeholder="At least 10 characters">
                   </div>
                   <div class="modal-footer fh-modal-footer">
                     <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
@@ -127,7 +127,7 @@
           </div>
           <div class="mb-3">
             <label class="fh-label">Password</label>
-            <input type="password" name="password" class="form-control fh-input" required minlength="6">
+            <input type="password" name="password" class="form-control fh-input" required minlength="10">
           </div>
           <div class="mb-2">
             <label class="fh-label">Role</label>

@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import nav %}
+{% from 'macros.html' import nav, token %}
 {% block title %}History - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='logs') }}
-<div class="container-fluid px-3 px-lg-4 py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+<div class="fh-page">
+  <div class="fh-page-header">
     <h2 class="fh-page-title"><i class="bi bi-clock-history"></i> Chore History</h2>
-    <form method="GET" class="d-flex align-items-center gap-2">
+    <form method="GET" class="d-flex align-items-center gap-2 flex-wrap">
       <select name="child_id" class="form-select fh-input-auto" onchange="this.form.submit()">
         <option value="">All Kids</option>
         {% for c in children %}
@@ -37,9 +37,9 @@
                 </div>
               </td>
               <td><i class="bi {{ log['chore_icon'] }} me-1"></i>{{ log['chore_name'] }}</td>
-              <td class="text-muted">{{ log['started_at'][:16] }}</td>
-              <td class="text-muted">{{ log['finished_at'][:16] if log['finished_at'] else '—' }}</td>
-              <td class="text-warning fw-bold">{{ token_icon|safe }}{{ "%.2f"|format(log['earned_amount']) }}</td>
+              <td class="text-muted">{{ log['started_at']|localtime }}</td>
+              <td class="text-muted">{{ log['finished_at']|localtime if log['finished_at'] else '—' }}</td>
+              <td class="text-warning fw-bold">{{ token(log['earned_amount'], token_icon) }}</td>
             </tr>
             {% endfor %}
           </tbody>

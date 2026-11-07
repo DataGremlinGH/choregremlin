@@ -8,9 +8,18 @@ PORT=8473
 # Secret key for session cookies (auto-generated if not set)
 # SECRET_KEY=change-me-to-a-random-string
 
-# Data directory (defaults to ./instance)
-# Set this to move data to a USB drive or network share
+# Data directory (defaults to /var/lib/choregremlin, or ~/.local/share/choregremlin on a laptop)
+# Must be outside the project folder. Set this to move data to a USB drive or network share.
 # CHOREGREMLIN_DATA_DIR=/mnt/usb/choregremlin-data
+
+# Set to 1 only when the app is served over HTTPS (enables secure cookies)
+# CHOREGREMLIN_HTTPS=1
+
+# Bind address. When Caddy is in front, keep the app on localhost only.
+# CHOREGREMLIN_BIND=127.0.0.1
+
+# Path to the Caddy local root certificate shown on the in-app Trust Page
+# CHOREGREMLIN_CA_CERT=/var/lib/choregremlin/caddy-root.crt
 
 # Enable debug mode (NOT recommended for production)
 # DEBUG=False

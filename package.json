@@ -1,8 +1,0 @@
-{
-  "name": "family-hub",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "build": "python3 -c \"import ast; ast.parse(open('app.py').read()); ast.parse(open('db.py').read()); print('Build OK - Python syntax verified')\""
-  }
-}
