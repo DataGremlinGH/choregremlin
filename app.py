@@ -807,12 +807,14 @@ def child_chores():
     child = g.child
     db_module.update_drop_chore_points()
     chores = db_module.get_chores_for_child(child['id'], child['can_do_hard_chores'])
+    chore_groups = group_chores_by_frequency(chores)
     assigned_drops = [_drop_view(drop) for drop in db_module.get_assigned_drop_chores(child['id'])]
     balance = db_module.get_balance(child['id'])
     month_earnings = db_module.get_monthly_earnings(child['id'])
     my_earnings = month_earnings[0] if month_earnings else None
     rewards = gamification_view(child['id'])
     return render_template('child_chores.html', child=child, chores=chores,
+                           chore_groups=chore_groups,
                            assigned_drops=assigned_drops, balance=balance,
                            my_earnings=my_earnings, rewards=rewards)
 

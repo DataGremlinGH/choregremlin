@@ -127,34 +127,47 @@
         </a>
       </div>
     </div>
-    {% if chores %}
-    <div class="fh-chore-grid">
-      {% for chore in chores %}
-      <div class="fh-chore-card">
-        <form method="POST" action="{{ url_for('kiosk_complete_chore', chore_id=chore['id']) }}" class="fh-chore-form">
-          <div class="fh-chore-icon">
-            {% if chore['chore_image'] %}
-            <img src="{{ chore_image_url(chore['chore_image']) }}" alt="" style="width:32px;height:32px;border-radius:8px;">
-            {% elif chore['chore_emoji'] %}
-            <span style="font-size:1.5rem;">{{ chore['chore_emoji'] }}</span>
-            {% else %}
-            <i class="bi {{ chore['icon'] }}"></i>
-            {% endif %}
-          </div>
-          <div class="fh-chore-name">{{ chore['name'] }}</div>
-          <div class="fh-chore-pay">
-            <i class="bi bi-cash"></i> {{ token(chore['pay_amount'], token_icon) }}
-          </div>
-          {% if chore['single_child_only'] %}
-          <div class="fh-chore-solo"><i class="bi bi-people-fill"></i> Shared - first completion counts</div>
-          {% endif %}
-          <button type="submit" class="fh-chore-complete">
-            <i class="bi bi-check-circle-fill"></i> Complete
-          </button>
-        </form>
+    {% if chore_groups %}
+    {% for group in chore_groups %}
+    <div class="mt-4" data-repeat-frequency="{{ group.key }}">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4 class="fh-section-title fs-6 mb-0">
+          <i class="bi {{ group.icon }}"></i> {{ group.label }}
+        </h4>
+        <span class="badge bg-secondary">{{ group.chores|length }}</span>
       </div>
-      {% endfor %}
+      <div class="fh-chore-grid">
+        {% for chore in group.chores %}
+        <div class="fh-chore-card">
+          <form method="POST" action="{{ url_for('kiosk_complete_chore', chore_id=chore['id']) }}" class="fh-chore-form">
+            <div class="fh-chore-icon">
+              {% if chore['chore_image'] %}
+              <img src="{{ chore_image_url(chore['chore_image']) }}" alt="" style="width:32px;height:32px;border-radius:8px;">
+              {% elif chore['chore_emoji'] %}
+              <span style="font-size:1.5rem;">{{ chore['chore_emoji'] }}</span>
+              {% else %}
+              <i class="bi {{ chore['icon'] }}"></i>
+              {% endif %}
+            </div>
+            <div class="fh-chore-name">{{ chore['name'] }}</div>
+            <div class="fh-chore-pay">
+              <i class="bi bi-cash"></i> {{ token(chore['pay_amount'], token_icon) }}
+            </div>
+            {% if group.key == 'set_days' and chore['due_day_labels'] %}
+            <div class="fh-chore-solo"><i class="bi bi-calendar-check"></i> {{ chore['due_day_labels']|join(', ') }}</div>
+            {% endif %}
+            {% if chore['single_child_only'] %}
+            <div class="fh-chore-solo"><i class="bi bi-people-fill"></i> Shared - first completion counts</div>
+            {% endif %}
+            <button type="submit" class="fh-chore-complete">
+              <i class="bi bi-check-circle-fill"></i> Complete
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
     </div>
+    {% endfor %}
     {% else %}
     <div class="text-center text-muted py-4">
       <i class="bi bi-emoji-frown fs-1 d-block mb-2"></i>

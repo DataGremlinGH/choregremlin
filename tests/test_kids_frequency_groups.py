@@ -68,6 +68,35 @@ class FrequencyGroupingTests(unittest.TestCase):
         for heading in (b'Daily', b'Weekly', b'Monthly', b'Weekend', b'Set Days'):
             self.assertIn(heading, response.data)
 
+    def test_kiosk_chores_page_renders_frequency_sections(self):
+        db_module.init_db()
+        with app_module.app.app_context():
+            if not db_module.is_setup_complete():
+                db_module.create_user(
+                    unique('Kiosk Frequency Admin'), None, 'kiosk-frequency-password',
+                    role='admin', username=unique('kiosk_frequency_admin'),
+                )
+            child_id = db_module.create_user(
+                unique('Kiosk Frequency Child'), None, None, role='child'
+            )
+            for frequency in ('daily', 'weekly', 'monthly', 'weekends', 'custom'):
+                chore_id = db_module.create_chore(
+                    unique(f'Kiosk {frequency}'), 'bi-list-check', 2,
+                    repeat_frequency=frequency, due_days='1,3',
+                )
+                db_module.assign_chore(chore_id, child_id)
+
+        client = app_module.app.test_client()
+        with client.session_transaction() as sess:
+            sess['kiosk_child_id'] = child_id
+        response = client.get('/kiosk/chores')
+
+        self.assertEqual(response.status_code, 200)
+        for heading in (b'Daily', b'Weekly', b'Monthly', b'Weekend', b'Set Days'):
+            self.assertIn(heading, response.data)
+        for key in (b'daily', b'weekly', b'monthly', b'weekend', b'set_days'):
+            self.assertIn(b'data-repeat-frequency="' + key + b'"', response.data)
+
 
 if __name__ == '__main__':
     unittest.main()
