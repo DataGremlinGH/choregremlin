@@ -1,6 +1,6 @@
 [Unit]
 Description=ChoreGremlin - The little gremlin that gets the chores done
-After=network.target
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -8,7 +8,7 @@ Type=simple
 User=choregremlin
 Group=choregremlin
 WorkingDirectory=/opt/choregremlin
-Environment=PORT=8473
+EnvironmentFile=-/etc/choregremlin/choregremlin.env
 ExecStart=/opt/choregremlin/venv/bin/python3 /opt/choregremlin/app.py
 Restart=always
 RestartSec=5
