@@ -1,8 +1,7 @@
-*.db
-*.db-journal
-.env
-instance/
-backups/
-uploads/
-__pycache__
+venv/
+__pycache__/
 *.pyc
+instance/
+*.db
+.env
+.DS_Store
