@@ -431,6 +431,79 @@ CREATE TABLE IF NOT EXISTS bill_payments (
     source TEXT NOT NULL DEFAULT 'earning',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS broadcast_alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    body TEXT DEFAULT '',
+    kind TEXT NOT NULL DEFAULT 'general',
+    child_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    achievement_key TEXT,
+    icon TEXT NOT NULL DEFAULT 'bi-megaphone-fill',
+    color TEXT NOT NULL DEFAULT '#10b981',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    expires_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS custom_milestones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    icon TEXT NOT NULL DEFAULT 'bi-award-fill',
+    color TEXT NOT NULL DEFAULT '#10b981',
+    metric TEXT NOT NULL,
+    threshold REAL NOT NULL DEFAULT 1,
+    reward_type TEXT NOT NULL DEFAULT 'none',
+    reward_value REAL NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS achievement_unlocks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    achievement_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    icon TEXT NOT NULL DEFAULT 'bi-award-fill',
+    color TEXT NOT NULL DEFAULT '#10b981',
+    metric TEXT NOT NULL DEFAULT '',
+    threshold REAL NOT NULL DEFAULT 0,
+    reward_type TEXT NOT NULL DEFAULT 'none',
+    reward_value REAL NOT NULL DEFAULT 0,
+    reward_payment_id INTEGER REFERENCES payments(id) ON DELETE SET NULL,
+    broadcast_id INTEGER REFERENCES broadcast_alerts(id) ON DELETE SET NULL,
+    unlocked_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, achievement_key)
+);
+
+CREATE TABLE IF NOT EXISTS live_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL DEFAULT 'message',
+    title TEXT DEFAULT '',
+    body TEXT DEFAULT '',
+    payload TEXT DEFAULT '{}',
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    child_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS system_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    filename TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL DEFAULT 'manual',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    checksum TEXT DEFAULT '',
+    note TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'ready',
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -783,7 +856,19 @@ COLOR_TABLES = (
 
 def _normalise_stored_colors(conn):
     """Defuse legacy CSS-injection payloads stored in colour columns."""
+    tables = {
+        row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
     for table in COLOR_TABLES:
+        if table not in tables:
+            continue
+        columns = {
+            row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if 'color' not in columns:
+            continue
         rows = conn.execute(f"SELECT id, color FROM {table}").fetchall()
         for row_id, color in rows:
             clean = achievements.clean_color(color)

@@ -29,7 +29,7 @@ from flask_wtf.csrf import CSRFProtect, CSRFError
 from markupsafe import Markup, escape as markup_escape
 
 import db as db_module
-from uploads import save_image, UploadError
+from uploads import save_image, ensure_upload_folder, UploadError
 import clock
 import gamification
 import achievements
@@ -63,6 +63,10 @@ def _load_secret_key():
 
 app.config['SECRET_KEY'] = _load_secret_key()
 app.config['UPLOAD_FOLDER'] = os.path.join(app.static_folder, 'uploads')
+try:
+    ensure_upload_folder(app.config['UPLOAD_FOLDER'])
+except UploadError as exc:
+    app.logger.warning('Upload folder is not ready: %s', exc)
 app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024  # 8MB
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('CHOREGREMLIN_HTTPS') == '1'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -199,6 +203,8 @@ def token_icon_for(currency):
 
 @app.errorhandler(UploadError)
 def handle_upload_error(error):
+    if request.is_json or request.accept_mimetypes.best == 'application/json':
+        return jsonify({'status': 'error', 'message': str(error)}), 400
     flash(str(error), 'danger')
     return redirect(_safe_referrer('dashboard'))
 
@@ -403,14 +409,25 @@ def marketplace_qr_data_uri(token):
 
 @app.context_processor
 def inject_globals():
-    currency = db_module.get_currency_settings()
-    selected_currency = CURRENCY_BY_CODE.get(currency['currency_code'], CURRENCIES[0])
-    ui_layout = db_module.get_ui_layout_settings()
-    return {
+    currency = {
+        'token_name': 'Widgets',
+        'token_singular': 'Widget',
+        'token_plural': 'Widgets',
+        'token_emoji': '\U0001fa9f',
+        'token_logo': '',
+        'token_logo_type': 'emoji',
+        'gbp_value': 0.01,
+        'currency_code': 'GBP',
+    }
+    selected_currency = CURRENCIES[0]
+    ui_layout = {
+        key: spec['default'] for key, spec in db_module.UI_LAYOUT_SETTINGS.items()
+    }
+    values = {
         'now': datetime.now(),
         'current_month': datetime.now().strftime('%Y-%m'),
-        'app_name': db_module.get_setting('app_name', 'Chore Gremlin'),
-        'family_logo': db_module.get_setting('family_logo', ''),
+        'app_name': 'Chore Gremlin',
+        'family_logo': '',
         'currency': currency,
         'currencies': CURRENCIES,
         'currency_code': selected_currency['code'],
@@ -423,18 +440,52 @@ def inject_globals():
         'token_logo_type': currency['token_logo_type'],
         'token_icon': token_icon_for(currency),
         'gbp_value': currency['gbp_value'],
-        'remote_access': db_module.get_setting('remote_access_enabled', '0') == '1',
-        'theme_color': achievements.clean_color(
-            db_module.get_setting('theme_color', '#10b981')
-        ),
-        'brightness_mode': db_module.get_setting('brightness_mode', 'dark'),
+        'remote_access': False,
+        'theme_color': '#10b981',
+        'brightness_mode': 'dark',
         'ui_layout': ui_layout,
         'menu_position': ui_layout['menu_position'],
         'button_theme': ui_layout['button_theme'],
-        'wallpaper': db_module.get_setting('wallpaper', ''),
+        'wallpaper': '',
         'data_dir': db_module.DATA_DIR,
-        'latest_broadcast': db_module.get_latest_active_broadcast(),
+        'latest_broadcast': None,
     }
+    try:
+        currency = db_module.get_currency_settings()
+        selected_currency = CURRENCY_BY_CODE.get(
+            currency['currency_code'], CURRENCIES[0]
+        )
+        ui_layout = db_module.get_ui_layout_settings()
+        values.update({
+            'app_name': db_module.get_setting('app_name', 'Chore Gremlin'),
+            'family_logo': db_module.get_setting('family_logo', ''),
+            'currency': currency,
+            'currency_code': selected_currency['code'],
+            'currency_symbol': selected_currency['symbol'],
+            'token_name': currency['token_name'],
+            'token_singular': currency['token_singular'],
+            'token_plural': currency['token_plural'],
+            'token_emoji': currency['token_emoji'],
+            'token_logo': currency['token_logo'],
+            'token_logo_type': currency['token_logo_type'],
+            'token_icon': token_icon_for(currency),
+            'gbp_value': currency['gbp_value'],
+            'remote_access': db_module.get_setting(
+                'remote_access_enabled', '0'
+            ) == '1',
+            'theme_color': achievements.clean_color(
+                db_module.get_setting('theme_color', '#10b981')
+            ),
+            'brightness_mode': db_module.get_setting('brightness_mode', 'dark'),
+            'ui_layout': ui_layout,
+            'menu_position': ui_layout['menu_position'],
+            'button_theme': ui_layout['button_theme'],
+            'wallpaper': db_module.get_setting('wallpaper', ''),
+            'latest_broadcast': db_module.get_latest_active_broadcast(),
+        })
+    except Exception as exc:
+        app.logger.warning('Using fallback template globals: %s', exc)
+    return values
 
 
 PUBLIC_ENDPOINTS = {

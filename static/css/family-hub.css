@@ -643,6 +643,16 @@ body.fh-nav-enabled {
 .fh-mini-photo img { width: 100%; height: 100%; object-fit: cover; }
 
 /* ---- Modals ---- */
+.modal-content {
+  max-height: 85vh;
+  overflow: hidden;
+}
+.modal-content .modal-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.modal-content .modal-header,
+.modal-content .modal-footer { flex-shrink: 0; }
 .fh-modal-content {
   background: var(--fh-panel);
   border: 1px solid var(--fh-border);
