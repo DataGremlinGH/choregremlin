@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS payments (
     amount REAL NOT NULL,
     type TEXT NOT NULL DEFAULT 'payout',
     description TEXT DEFAULT '',
-    log_id INTEGER REFERENCES chore_logs(id),
+    log_id INTEGER REFERENCES chore_logs(id) ON DELETE SET NULL,
     created_by INTEGER REFERENCES users(id),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -1616,6 +1616,14 @@ def update_chore(chore_id, **fields):
 
 def delete_chore(chore_id):
     db = get_db()
+    db.execute(
+        """UPDATE payments SET log_id=NULL
+           WHERE log_id IN (SELECT id FROM chore_logs WHERE chore_id=?)""",
+        (chore_id,),
+    )
+    db.execute("DELETE FROM chore_logs WHERE chore_id=?", (chore_id,))
+    db.execute("DELETE FROM chore_assignments WHERE chore_id=?", (chore_id,))
+    db.execute("UPDATE drop_chores SET chore_id=NULL WHERE chore_id=?", (chore_id,))
     db.execute("DELETE FROM chores WHERE id=?", (chore_id,))
     db.commit()
 

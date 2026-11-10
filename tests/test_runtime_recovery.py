@@ -6,6 +6,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+import uuid
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -68,6 +69,42 @@ class SchemaRecoveryTests(unittest.TestCase):
 
         self.assertEqual(V2_TABLES - names, set())
         self.assertEqual(BROADCAST_COLUMNS - columns, set())
+
+
+class ChoreDeletionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        db_module.init_db()
+        cls.ctx = app_module.app.app_context()
+        cls.ctx.push()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.ctx.pop()
+
+    def test_delete_chore_with_linked_payment_and_logs(self):
+        suffix = uuid.uuid4().hex[:8]
+        child_id = db_module.create_user(
+            f'Delete Chore Child {suffix}', None, None, role='child'
+        )
+        chore_id = db_module.create_chore(
+            f'Delete Chore {suffix}', 'bi-trash', 1
+        )
+        log_id = db_module.start_chore(child_id, chore_id)
+        db_module.finish_chore(log_id)
+        payment_id = db_module.create_payment(
+            child_id, 1, description='Linked payout', log_id=log_id,
+            auto_repay=False,
+        )
+
+        db_module.delete_chore(chore_id)
+
+        self.assertIsNone(db_module.get_chore(chore_id))
+        payment = db_module.get_db().execute(
+            "SELECT log_id FROM payments WHERE id=?", (payment_id,)
+        ).fetchone()
+        self.assertIsNotNone(payment)
+        self.assertIsNone(payment['log_id'])
 
 
 class ContextProcessorRecoveryTests(unittest.TestCase):
