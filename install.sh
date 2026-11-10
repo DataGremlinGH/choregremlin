@@ -1,7 +1,7 @@
 #!/bin/bash
 # ChoreGremlin - One-Command Installer for Raspberry Pi
-# Usage: curl -sSL https://raw.githubusercontent.com/DataGremlinGH/ChoreGremlin/main/install.sh | bash
-# Or:  sudo bash install.sh
+# Usage: curl -sSL https://raw.githubusercontent.com/DataGremlinGH/ChoreGremlin/main/install.sh -o install.sh
+#        sudo bash install.sh
 #
 # "The little gremlin that gets the chores done"
 
@@ -37,15 +37,31 @@ print_summary() {
     echo -e "${GREEN}=========================================${NC}"
     echo ""
     echo -e "  ${BOLD}App Name:${NC}     $APP_NAME"
-    echo -e "  ${BOLD}Port:${NC}         $CHOSEN_PORT"
+    if [ "$HTTPS_WANTED" = "y" ]; then
+        echo -e "  ${BOLD}Web Port:${NC}     443 (HTTPS)"
+        echo -e "  ${BOLD}App Port:${NC}     $CHOSEN_PORT (localhost only)"
+    else
+        echo -e "  ${BOLD}Port:${NC}         $CHOSEN_PORT"
+    fi
     echo -e "  ${BOLD}Data Dir:${NC}     $DATA_DIR"
     echo -e "  ${BOLD}Token Name:${NC}   $TOKEN_PLURAL"
     echo -e "  ${BOLD}Security Updates:${NC} $AUTO_UPDATE_LABEL"
     echo -e "  ${BOLD}Daily Backup:${NC} $AUTO_BACKUP_LABEL"
     echo -e "  ${BOLD}Remote Access:${NC} $REMOTE_LABEL"
+    if [ "$HTTPS_WANTED" = "y" ]; then
+        echo -e "  ${BOLD}HTTPS:${NC}        Enabled with Caddy local certificate"
+    else
+        echo -e "  ${BOLD}HTTPS:${NC}        Off"
+    fi
     echo ""
     echo -e "  ${BOLD}Open in your browser:${NC}"
-    echo -e "  ${CYAN}http://$PI_IP:$CHOSEN_PORT${NC}"
+    if [ "$HTTPS_WANTED" = "y" ]; then
+        echo -e "  ${CYAN}https://$PI_IP${NC}"
+        echo -e "  ${CYAN}https://familyhub.local${NC}"
+    else
+        echo -e "  ${CYAN}http://$PI_IP:$CHOSEN_PORT${NC}"
+        echo -e "  ${CYAN}http://familyhub.local:$CHOSEN_PORT${NC}"
+    fi
     echo -e "  ${BOLD}Admin username:${NC} $ADMIN_USERNAME"
     echo ""
     echo -e "  ${BOLD}Service commands:${NC}"
@@ -104,6 +120,14 @@ if [ "$EUID" -ne 0 ] && [ "${DRY_RUN:-0}" != "1" ]; then
     exit 1
 fi
 
+if [ ! -t 0 ] && [ "${DRY_RUN:-0}" != "1" ]; then
+    echo -e "${RED}This installer asks a few questions, so it needs a terminal.${NC}"
+    echo "Download it first, then run it:"
+    echo "  curl -sSL https://raw.githubusercontent.com/DataGremlinGH/ChoreGremlin/main/install.sh -o install.sh"
+    echo "  sudo bash install.sh"
+    exit 1
+fi
+
 print_header
 
 printf '\033[1;32m'
@@ -119,6 +143,8 @@ printf '\033[0m'
 SETTINGS_DIR="/etc/choregremlin"
 SETTINGS_FILE="$SETTINGS_DIR/choregremlin.env"
 UNIT_FILE="/etc/systemd/system/choregremlin.service"
+CADDYFILE="/etc/caddy/Caddyfile"
+CADDY_BACKUP="$CADDYFILE.before-choregremlin"
 CURRENCY_CODES=(GBP EUR USD CAD AUD NZD ZAR INR SGD NGN)
 
 yes_label() {
@@ -127,6 +153,20 @@ yes_label() {
 
 port_in_use() {
     (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+}
+
+disable_https_fallback() {
+    HTTPS_WANTED="n"
+    if [ -f "$SETTINGS_FILE" ]; then
+        sed -i 's/^CHOREGREMLIN_HTTPS=.*/CHOREGREMLIN_HTTPS=0/; s/^CHOREGREMLIN_BIND=.*/CHOREGREMLIN_BIND=0.0.0.0/' "$SETTINGS_FILE"
+    fi
+    rm -f "$CADDYFILE"
+    systemctl disable --now caddy >/dev/null 2>&1 || true
+    if [ -f "${AVAHI_FILE:-}" ]; then
+        sed -i "s#_https\._tcp#_http._tcp#; s#<port>443</port>#<port>$CHOSEN_PORT</port>#" "$AVAHI_FILE"
+        systemctl restart avahi-daemon >/dev/null 2>&1 || true
+    fi
+    systemctl restart choregremlin >/dev/null 2>&1 || true
 }
 
 ask_until() {
@@ -185,17 +225,35 @@ echo ""
 EXISTING_INSTALL=0
 EXISTING_PORT=""
 EXISTING_DATA=""
+EXISTING_HTTPS="n"
 if [ -f "$SETTINGS_FILE" ] || [ -d "$APP_DIR" ]; then
     EXISTING_INSTALL=1
 fi
 if [ -f "$SETTINGS_FILE" ]; then
     EXISTING_PORT=$(grep -E '^PORT=' "$SETTINGS_FILE" | tail -n 1 | cut -d= -f2-)
     EXISTING_DATA=$(grep -E '^CHOREGREMLIN_DATA_DIR=' "$SETTINGS_FILE" | tail -n 1 | cut -d= -f2-)
+    if grep -qE '^CHOREGREMLIN_HTTPS=1' "$SETTINGS_FILE"; then
+        EXISTING_HTTPS="y"
+    fi
 fi
 if [ -z "$EXISTING_PORT" ] && [ -f "$UNIT_FILE" ]; then
     EXISTING_PORT=$(grep -oP 'Environment=PORT=\K[0-9]+' "$UNIT_FILE" || true)
 fi
 CURRENT_DATA=${EXISTING_DATA:-/var/lib/choregremlin}
+LEGACY_DATA_SOURCE=""
+if [ -n "$EXISTING_DATA" ]; then
+    case "$EXISTING_DATA" in
+        "$APP_DIR"/*) LEGACY_DATA_SOURCE="$EXISTING_DATA"; CURRENT_DATA="/var/lib/choregremlin" ;;
+    esac
+else
+    for legacy in "$APP_DIR/data" "$APP_DIR/instance"; do
+        if [ -f "$legacy/choregremlin.db" ]; then
+            LEGACY_DATA_SOURCE="$legacy"
+            EXISTING_INSTALL=1
+            CURRENT_DATA="/var/lib/choregremlin"
+        fi
+    done
+fi
 
 FREE_PORT=""
 for candidate in $(seq "$DEFAULT_PORT" $((DEFAULT_PORT + 10))); do
@@ -230,7 +288,7 @@ REMOTE_ACCESS="n"
 AUTO_UPDATES="y"
 DAILY_BACKUP="y"
 OPEN_FIREWALL="y"
-HTTPS_WANTED="n"
+HTTPS_WANTED="$EXISTING_HTTPS"
 REPO_SOURCE="$REPO_URL"
 BRANCH="main"
 DATA_DIR="$CURRENT_DATA"
@@ -281,7 +339,12 @@ if [ "$INSTALL_MODE" = "2" ]; then
     ask_yes_no "Open the app's port in the firewall?" "y" OPEN_FIREWALL ""
     ask_input "Where should the app be downloaded from?" "$REPO_URL" REPO_SOURCE ""
     ask_until "Which branch?" "main" BRANCH '^[A-Za-z0-9._/-]+$' "Use letters, numbers, dots, dashes, slashes or underscores." ""
-    ask_yes_no "Turn on HTTPS (secure connection) for your home network?" "y" HTTPS_WANTED ""
+    ask_yes_no "Turn on HTTPS (secure connection) for your home network?" "$EXISTING_HTTPS" HTTPS_WANTED "Uses Caddy with a private local certificate. You will install the trust certificate on each device from the in-app Trust Page."
+fi
+
+KEEP_LEGACY_DATA=1
+if [ "$INSTALL_MODE" = "2" ] && [ "$KEEP_DATA" != "y" ]; then
+    KEEP_LEGACY_DATA=0
 fi
 
 TOKEN_SINGULAR=$TOKEN_PLURAL
@@ -308,9 +371,34 @@ if [ "${DRY_RUN:-0}" = "1" ]; then
     exit 0
 fi
 
+if [ -n "$LEGACY_DATA_SOURCE" ] && [ "$DATA_DIR" != "$LEGACY_DATA_SOURCE" ] && [ "$KEEP_LEGACY_DATA" -eq 1 ]; then
+    echo -e "${BOLD}Moving your existing database out of the app folder...${NC}"
+    mkdir -p "$DATA_DIR"
+    if [ ! -f "$DATA_DIR/choregremlin.db" ]; then
+        cp -a "$LEGACY_DATA_SOURCE/choregremlin.db" "$DATA_DIR/choregremlin.db"
+        echo "  Copied the database to $DATA_DIR"
+    else
+        echo -e "  ${YELLOW}A database already exists in $DATA_DIR, so the old copy was left in place.${NC}"
+    fi
+fi
+
 echo -e "${BOLD}Installing packages...${NC}"
 apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv git curl ufw unattended-upgrades
+DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv git curl ufw avahi-daemon unattended-upgrades
+
+if [ "$HTTPS_WANTED" = "y" ]; then
+    echo -e "${BOLD}Installing Caddy for local HTTPS...${NC}"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y debian-keyring debian-archive-keyring apt-transport-https gpg
+    if ! curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' -o /tmp/choregremlin-caddy.key || \
+       ! gpg --dearmor < /tmp/choregremlin-caddy.key > /usr/share/keyrings/caddy-stable-archive-keyring.gpg || \
+       ! curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' -o /etc/apt/sources.list.d/caddy-stable.list || \
+       ! apt-get update || \
+       ! DEBIAN_FRONTEND=noninteractive apt-get install -y caddy; then
+        echo -e "${YELLOW}Caddy could not be installed, so HTTPS will be skipped. The hub will stay on plain HTTP.${NC}"
+        HTTPS_WANTED="n"
+    fi
+    rm -f /tmp/choregremlin-caddy.key
+fi
 
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
     useradd --system --home-dir "$APP_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
@@ -338,6 +426,34 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
 echo -e "${BOLD}Installing Python packages...${NC}"
 python3 -m venv "$VENV_DIR"
 "$VENV_DIR/bin/pip" install --quiet -r "$APP_DIR/requirements.txt"
+mkdir -p "$APP_DIR/static/uploads"
+if [ -d "$DATA_DIR/uploads" ]; then
+    cp -a "$DATA_DIR/uploads/." "$APP_DIR/static/uploads/" 2>/dev/null || true
+fi
+chmod +x "$APP_DIR/install.sh" "$APP_DIR/update.sh" "$APP_DIR/uninstall.sh" 2>/dev/null || true
+chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
+
+echo -e "${BOLD}Configuring familyhub.local (Avahi)...${NC}"
+AVAHI_FILE="/etc/avahi/services/choregremlin.service"
+AVAHI_TYPE="_http._tcp"
+AVAHI_PORT="$CHOSEN_PORT"
+if [ "$HTTPS_WANTED" = "y" ]; then
+    AVAHI_TYPE="_https._tcp"
+    AVAHI_PORT="443"
+fi
+cat > "$AVAHI_FILE" <<'AVAHI'
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">ChoreGremlin on %h</name>
+  <service>
+    <type>__TYPE__</type>
+    <port>__PORT__</port>
+  </service>
+</service-group>
+AVAHI
+sed -i "s/__TYPE__/$AVAHI_TYPE/; s/__PORT__/$AVAHI_PORT/" "$AVAHI_FILE"
+systemctl restart avahi-daemon >/dev/null 2>&1 || true
 
 echo -e "${BOLD}Writing the settings file...${NC}"
 SECRET_KEY_VALUE=""
@@ -347,6 +463,14 @@ fi
 if [ -z "$SECRET_KEY_VALUE" ]; then
     SECRET_KEY_VALUE=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
 fi
+HTTPS_SETTING="0"
+BIND_SETTING="0.0.0.0"
+CA_SETTING=""
+if [ "$HTTPS_WANTED" = "y" ]; then
+    HTTPS_SETTING="1"
+    BIND_SETTING="127.0.0.1"
+    CA_SETTING="$DATA_DIR/caddy-root.crt"
+fi
 mkdir -p "$SETTINGS_DIR"
 (
     umask 077
@@ -354,6 +478,9 @@ mkdir -p "$SETTINGS_DIR"
 PORT=$CHOSEN_PORT
 CHOREGREMLIN_DATA_DIR=$DATA_DIR
 SECRET_KEY=$SECRET_KEY_VALUE
+CHOREGREMLIN_HTTPS=$HTTPS_SETTING
+CHOREGREMLIN_BIND=$BIND_SETTING
+CHOREGREMLIN_CA_CERT=$CA_SETTING
 EOF
 )
 chown root:root "$SETTINGS_FILE"
@@ -407,7 +534,7 @@ Type=simple
 User=choregremlin
 Group=choregremlin
 WorkingDirectory=/opt/choregremlin
-EnvironmentFile=/etc/choregremlin/choregremlin.env
+EnvironmentFile=-/etc/choregremlin/choregremlin.env
 ExecStart=/opt/choregremlin/venv/bin/python3 /opt/choregremlin/app.py
 Restart=always
 RestartSec=5
@@ -424,8 +551,9 @@ if [ "$DAILY_BACKUP" = "y" ]; then
     cat > /usr/local/sbin/choregremlin-backup <<'SCRIPT'
 #!/bin/sh
 set -e
-DB="$CHOREGREMLIN_DATA_DIR/choregremlin.db"
-BACKUP_DIR="$CHOREGREMLIN_DATA_DIR/backups"
+DATA_DIR="${CHOREGREMLIN_DATA_DIR:-/var/lib/choregremlin}"
+DB="$DATA_DIR/choregremlin.db"
+BACKUP_DIR="$DATA_DIR/backups"
 [ -f "$DB" ] || exit 0
 mkdir -p "$BACKUP_DIR"
 STAMP=$(date +%Y%m%d-%H%M%S)
@@ -446,7 +574,7 @@ Description=ChoreGremlin daily database backup
 Type=oneshot
 User=choregremlin
 Group=choregremlin
-EnvironmentFile=/etc/choregremlin/choregremlin.env
+EnvironmentFile=-/etc/choregremlin/choregremlin.env
 ExecStart=/usr/local/sbin/choregremlin-backup
 UNIT
     cat > /etc/systemd/system/choregremlin-backup.timer <<'UNIT'
@@ -464,6 +592,36 @@ else
     systemctl disable --now choregremlin-backup.timer >/dev/null 2>&1 || true
 fi
 
+cat > /etc/systemd/system/choregremlin-update.service <<'UNIT'
+[Unit]
+Description=ChoreGremlin Auto-Update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/choregremlin
+Environment=CHOREGREMLIN_UPDATE_TRIGGER=auto
+ExecStart=/opt/choregremlin/update.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=choregremlin-update
+UNIT
+
+cat > /etc/systemd/system/choregremlin-update.timer <<'UNIT'
+[Unit]
+Description=ChoreGremlin Auto-Update Timer
+Requires=choregremlin-update.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+
 if [ "$AUTO_UPDATES" = "y" ]; then
     cat > /etc/apt/apt.conf.d/20auto-upgrades <<'CONF'
 APT::Periodic::Update-Package-Lists "1";
@@ -475,22 +633,9 @@ CONF
     systemctl enable --now unattended-upgrades >/dev/null
 fi
 
-SSH_PORT=$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')
-SSH_PORT=${SSH_PORT:-22}
-ufw allow "${SSH_PORT}/tcp" >/dev/null
-if [ "$OPEN_FIREWALL" = "y" ]; then
-    if [ "$REMOTE_ACCESS" = "y" ]; then
-        ufw allow "$CHOSEN_PORT/tcp" >/dev/null
-    else
-        for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
-            ufw allow from "$net" to any port "$CHOSEN_PORT" proto tcp >/dev/null
-        done
-    fi
-fi
-ufw --force enable >/dev/null
-
 systemctl daemon-reload
 systemctl enable choregremlin >/dev/null
+systemctl enable --now choregremlin-update.timer >/dev/null 2>&1 || true
 systemctl restart choregremlin
 
 echo -e "${BOLD}Checking the app answers...${NC}"
@@ -508,16 +653,118 @@ if [ "$LOGIN_OK" -ne 1 ]; then
 fi
 
 PI_IP=$(hostname -I | awk '{print $1}')
+PI_IP=${PI_IP:-127.0.0.1}
+
+if [ "$HTTPS_WANTED" = "y" ]; then
+    echo -e "${BOLD}Configuring Caddy local HTTPS...${NC}"
+    mkdir -p /etc/caddy
+    if [ -f "$CADDYFILE" ] && ! grep -q 'ChoreGremlin managed' "$CADDYFILE"; then
+        cp -a "$CADDYFILE" "$CADDY_BACKUP"
+        echo -e "  ${YELLOW}Saved the existing Caddyfile to $CADDY_BACKUP${NC}"
+    fi
+    cat > "$CADDYFILE" <<'CADDY'
+# ChoreGremlin managed - local HTTPS
+{
+    auto_https disable_redirects
+}
+
+https://familyhub.local {
+    tls internal
+    reverse_proxy 127.0.0.1:__APP_PORT__
+}
+
+https://__PI_IP__ {
+    tls internal
+    reverse_proxy 127.0.0.1:__APP_PORT__
+}
+
+http://familyhub.local {
+    redir https://familyhub.local{uri} permanent
+}
+
+http://__PI_IP__ {
+    redir https://__PI_IP__{uri} permanent
+}
+CADDY
+    sed -i "s/__APP_PORT__/$CHOSEN_PORT/g; s/__PI_IP__/$PI_IP/g" "$CADDYFILE"
+    systemctl enable caddy >/dev/null 2>&1 || true
+    systemctl restart caddy
+
+    echo -e "${BOLD}Checking HTTPS answers...${NC}"
+    CADDY_OK=0
+    for _ in $(seq 1 20); do
+        if curl -kfsS -H 'Host: familyhub.local' -o /dev/null "https://127.0.0.1/login"; then
+            CADDY_OK=1
+            break
+        fi
+        sleep 1
+    done
+    if [ "$CADDY_OK" -ne 1 ]; then
+        echo -e "${YELLOW}Caddy did not answer, so HTTPS will be turned off and the hub will stay on plain HTTP.${NC}"
+        echo -e "  Check: sudo journalctl -u caddy -n 50"
+        disable_https_fallback
+    else
+        CA_CERT=""
+        for _ in $(seq 1 10); do
+            CA_CERT=$(find /var/lib/caddy /root/.local/share/caddy -path '*/pki/authorities/local/root.crt' -print -quit 2>/dev/null || true)
+            if [ -n "$CA_CERT" ]; then
+                break
+            fi
+            sleep 1
+        done
+        if [ -n "$CA_CERT" ]; then
+            cp -f "$CA_CERT" "$DATA_DIR/caddy-root.crt"
+            chown "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR/caddy-root.crt"
+            chmod 644 "$DATA_DIR/caddy-root.crt"
+            echo -e "  ${GREEN}Trust certificate saved for the in-app Trust Page${NC}"
+        else
+            echo -e "  ${YELLOW}The Caddy trust certificate was not found yet. Restart Caddy, then refresh the Trust Page.${NC}"
+        fi
+    fi
+elif [ -f "$CADDYFILE" ] && grep -q 'ChoreGremlin managed' "$CADDYFILE"; then
+    if [ -f "$CADDY_BACKUP" ]; then
+        mv -f "$CADDY_BACKUP" "$CADDYFILE"
+        systemctl restart caddy >/dev/null 2>&1 || true
+    else
+        rm -f "$CADDYFILE"
+        systemctl disable --now caddy >/dev/null 2>&1 || true
+    fi
+fi
+
+if [ "$OPEN_FIREWALL" = "y" ]; then
+    echo -e "${BOLD}Configuring the firewall...${NC}"
+    SSH_PORT=$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')
+    SSH_PORT=${SSH_PORT:-22}
+    ufw allow "${SSH_PORT}/tcp" >/dev/null
+    WEB_PORTS=("$CHOSEN_PORT")
+    if [ "$HTTPS_WANTED" = "y" ]; then
+        WEB_PORTS=(443 80)
+    fi
+    for web_port in "${WEB_PORTS[@]}"; do
+        if [ "$REMOTE_ACCESS" = "y" ]; then
+            ufw allow "$web_port/tcp" >/dev/null
+        else
+            for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+                ufw allow from "$net" to any port "$web_port" proto tcp >/dev/null
+            done
+        fi
+    done
+    ufw --force enable >/dev/null
+fi
+
 print_summary
 
 echo -e "${BOLD}Next steps${NC}"
-echo "  1. Open http://$PI_IP:$CHOSEN_PORT on a device on your home Wi-Fi and sign in as $ADMIN_USERNAME."
-echo "  2. Add your children and parents in the app."
-echo "  Your data folder: $DATA_DIR"
 if [ "$HTTPS_WANTED" = "y" ]; then
-    echo -e "  ${YELLOW}HTTPS is not set up by this installer yet. The app is served over plain http.${NC}"
+    echo "  1. Open https://$PI_IP on a device on your home Wi-Fi."
+    echo "     If the browser warns about the certificate, open https://familyhub.local/trust and install the trust certificate."
+else
+    echo "  1. Open http://$PI_IP:$CHOSEN_PORT on a device on your home Wi-Fi and sign in as $ADMIN_USERNAME."
 fi
+echo "  2. Sign in as $ADMIN_USERNAME and set up 2FA when prompted."
+echo "  3. Add your children and parents in the app."
+echo "  Your data folder: $DATA_DIR"
 if [ "$OPEN_FIREWALL" != "y" ]; then
-    echo -e "  ${YELLOW}The app's port is closed in the firewall, so other devices cannot reach it yet.${NC}"
+    echo -e "  ${YELLOW}The app's web port is closed in the firewall, so other devices cannot reach it yet.${NC}"
 fi
 echo ""
