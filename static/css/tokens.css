@@ -1,32 +1,58 @@
-/* Design tokens: shared colours, spacing, radius, shadows and type scale */
+/* Design tokens: shared colours, spacing, radius, shadows, type scale and layout */
 :root {
-  --cg-primary-50: #e6fbff;
-  --cg-primary-400: #00d9ff;
-  --cg-primary-600: #00a3c2;
-  --cg-secondary-400: #ff6b9d;
+  /* Emerald accent palette */
+  --cg-primary-50: #ecfdf5;
+  --cg-primary-100: #d1fae5;
+  --cg-primary-200: #a7f3d0;
+  --cg-primary-300: #6ee7b7;
+  --cg-primary-400: #34d399;
+  --cg-primary-500: #10b981;
+  --cg-primary-600: #059669;
+  --cg-primary-700: #047857;
+  --cg-primary-800: #065f46;
+  --cg-primary-900: #064e3b;
+  --cg-primary-rgb: 16, 185, 129;
+
+  --cg-secondary-400: #14b8a6;
   --cg-accent-400: #fbbf24;
   --cg-success-400: #34d399;
   --cg-warning-400: #fbbf24;
   --cg-error-400: #ef4444;
-  --cg-neutral-950: #0a0e1a;
-  --cg-neutral-900: #111827;
-  --cg-neutral-800: #1a2438;
-  --cg-neutral-500: #6b7a99;
-  --cg-neutral-100: #e2eaf4;
+
+  /* Surfaces carry a subtle emerald undertone */
+  --cg-neutral-950: #06100d;
+  --cg-neutral-900: #0c1a16;
+  --cg-neutral-800: #152720;
+  --cg-neutral-700: #1d352c;
+  --cg-neutral-500: #6b8b7c;
+  --cg-neutral-100: #e4f2ea;
+
+  /* Layout */
+  --cg-page-max: 1280px;
+  --cg-page-narrow: 820px;
+  --cg-page-form: 640px;
+  --cg-page-kiosk: 980px;
+  --cg-rail-width: 264px;
+  --cg-topbar-height: 64px;
+  --cg-bottom-nav-height: 72px;
+  --cg-control-height: 42px;
 
   --cg-space-1: 8px;
   --cg-space-2: 16px;
   --cg-space-3: 24px;
   --cg-space-4: 32px;
+  --cg-space-5: 48px;
 
-  --cg-radius-sm: 6px;
-  --cg-radius-md: 10px;
-  --cg-radius-lg: 16px;
+  --cg-radius-sm: 8px;
+  --cg-radius-md: 12px;
+  --cg-radius-lg: 18px;
+  --cg-radius-pill: 999px;
 
   --cg-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --cg-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
-  --cg-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --cg-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --cg-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45);
 
+  --cg-text-xs: 0.75rem;
   --cg-text-sm: 0.875rem;
   --cg-text-base: 1rem;
   --cg-text-lg: 1.25rem;

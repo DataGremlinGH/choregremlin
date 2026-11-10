@@ -13,6 +13,7 @@
     <h2 class="fh-title mb-1">{{ child['name'] }}</h2>
     <p class="text-muted mb-4">Enter your PIN</p>
     <form method="POST" id="pinForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="fh-pin-display mb-3" id="pinDisplay">
         <span class="fh-pin-dot"></span>
         <span class="fh-pin-dot"></span>
@@ -30,9 +31,13 @@
         <button type="button" class="fh-pin-key" data-key="7">7</button>
         <button type="button" class="fh-pin-key" data-key="8">8</button>
         <button type="button" class="fh-pin-key" data-key="9">9</button>
-        <button type="button" class="fh-pin-key fh-pin-clear" data-key="clear"><i class="bi bi-arrow-counterclockwise"></i></button>
+        <button type="button" class="fh-pin-key fh-pin-clear pin-btn-reset" data-key="clear" aria-label="Reset PIN">
+          <i class="bi bi-arrow-counterclockwise"></i><span class="fh-pin-key-label">Reset</span>
+        </button>
         <button type="button" class="fh-pin-key" data-key="0">0</button>
-        <button type="button" class="fh-pin-key fh-pin-go" data-key="go"><i class="bi bi-check-lg"></i> Enter</button>
+        <button type="button" class="fh-pin-key fh-pin-go pin-btn-enter" data-key="go" aria-label="Submit PIN">
+          <i class="bi bi-check-lg"></i><span class="fh-pin-key-label">Enter</span>
+        </button>
       </div>
     </form>
     <div class="mt-3">

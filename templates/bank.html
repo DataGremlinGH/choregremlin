@@ -1,0 +1,392 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav, token %}
+{% block title %}Bank - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='bank') }}
+<div class="fh-page">
+  <div class="fh-page-header">
+    <h2 class="fh-page-title"><i class="bi bi-bank"></i> Gremlin Central Bank</h2>
+    <span class="badge bg-success fs-6">Savings, interest and loans</span>
+  </div>
+
+  {% if accounts %}
+  <div class="row g-3 mb-4">
+    {% for account in accounts %}
+    <div class="col-12 col-xl-6">
+      <div class="fh-card h-100">
+        <div class="fh-card-header d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-piggy-bank-fill"></i> {{ account['user_name'] }}</span>
+          <span class="badge bg-info">{{ account['compounding']|title }} interest</span>
+        </div>
+        <div class="fh-card-body">
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <div class="small text-muted">Savings</div>
+              <div class="fs-4 fw-bold text-success">{{ token(account['balance'], token_icon) }}</div>
+            </div>
+            <div class="col-6">
+              <div class="small text-muted">Spendable</div>
+              <div class="fs-5 fw-semibold">{{ token(account['spendable'], token_icon) }}</div>
+            </div>
+          </div>
+
+          <form method="POST" action="{{ url_for('bank_settings', child_id=account['user_id']) }}" class="row g-2 align-items-end mb-2">
+            <div class="col-5">
+              <label class="form-label small mb-1">Annual interest %</label>
+              <input type="number" name="annual_interest_rate" class="form-control form-control-sm" min="0" max="100" step="0.01" value="{{ '%.2f'|format(account['annual_interest_rate']) }}">
+            </div>
+            <div class="col-4">
+              <label class="form-label small mb-1">Compounding</label>
+              <select name="compounding" class="form-select form-select-sm">
+                <option value="daily" {{ 'selected' if account['compounding'] == 'daily' else '' }}>Daily</option>
+                <option value="weekly" {{ 'selected' if account['compounding'] == 'weekly' else '' }}>Weekly</option>
+              </select>
+            </div>
+            <div class="col-3">
+              <button type="submit" class="btn fh-btn-outline btn-sm w-100">Save</button>
+            </div>
+          </form>
+
+          <div class="row g-2">
+            <div class="col-6">
+              <form method="POST" action="{{ url_for('bank_deposit', child_id=account['user_id']) }}" class="input-group input-group-sm">
+                <input type="number" name="amount" class="form-control" min="0.01" step="0.01" placeholder="Deposit" required>
+                <button type="submit" class="btn fh-btn-success">Deposit</button>
+              </form>
+            </div>
+            <div class="col-6">
+              <form method="POST" action="{{ url_for('bank_withdraw', child_id=account['user_id']) }}" class="input-group input-group-sm">
+                <input type="number" name="amount" class="form-control" min="0.01" step="0.01" placeholder="Withdraw" required>
+                <button type="submit" class="btn fh-btn-cyan">Withdraw</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fh-card mb-4">
+    <div class="fh-card-body text-center text-muted py-4">
+      <i class="bi bi-people fs-1 d-block mb-2"></i>
+      <p class="mb-0">Add a child to open a savings account.</p>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="fh-card mb-4" id="savings-vaults">
+    <div class="fh-card-header d-flex justify-content-between align-items-center">
+      <span><i class="bi bi-bullseye"></i> Savings Vaults &amp; Goals</span>
+      <button type="button" class="btn fh-btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#vaultAddModal">
+        <i class="bi bi-plus-lg"></i> New Goal
+      </button>
+    </div>
+    <div class="fh-card-body">
+      {% if vaults %}
+      <div class="fh-vault-grid">
+        {% for vault in vaults %}
+        {% set p = vault['progress'] %}
+        <div class="fh-vault-card" style="--vault-color: {{ vault['color'] }};">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div class="d-flex gap-2 align-items-center">
+              <div class="fh-vault-icon" style="color: {{ vault['color'] }}; border-color: {{ vault['color'] }};">
+                <i class="bi {{ vault['icon'] }}"></i>
+              </div>
+              <div>
+                <div class="fh-vault-name">{{ vault['name'] }}</div>
+                <div class="small text-muted">
+                  {{ vault['user_name'] }}{% if vault['target_date'] %} &middot; by {{ vault['target_date'] }}{% endif %}
+                </div>
+              </div>
+            </div>
+            {% if p['closed'] %}
+            <span class="badge bg-secondary">Closed</span>
+            {% elif p['target_reached'] %}
+            <span class="badge bg-success">Goal reached</span>
+            {% elif p['locked'] %}
+            <span class="badge bg-warning text-dark"><i class="bi bi-lock-fill"></i> Locked</span>
+            {% else %}
+            <span class="badge bg-info text-dark">Open</span>
+            {% endif %}
+          </div>
+
+          <div class="d-flex justify-content-between small mt-3 mb-1">
+            <span class="fw-semibold">{{ token(vault['balance'], token_icon) }}</span>
+            <span class="text-muted">of {{ token(vault['target_amount'], token_icon) }}</span>
+          </div>
+          <div class="progress fh-vault-progress mb-2" role="progressbar" aria-valuenow="{{ p['percent'] }}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar" style="width: {{ p['percent'] }}%; background: {{ vault['color'] }};"></div>
+          </div>
+          <div class="d-flex justify-content-between small text-muted">
+            <span>{{ p['percent'] }}%</span>
+            <span>{{ token(p['remaining'], token_icon) }} to go</span>
+          </div>
+
+          {% if p['lock_reason'] %}
+          <div class="small text-warning mt-2"><i class="bi bi-lock"></i> {{ p['lock_reason'] }}</div>
+          {% endif %}
+          {% if vault['match_rule'] %}
+          <div class="small text-info mt-1">
+            <i class="bi bi-people"></i>
+            {{ vault['match_rule']['match_percent']|round|int }}% match up to {{ token(vault['match_rule']['weekly_cap'], token_icon) }}/week
+          </div>
+          {% endif %}
+
+          <div class="d-flex gap-2 mt-3 flex-wrap">
+            {% if vault['status'] == 'active' and p['locked'] %}
+            <form method="POST" action="{{ url_for('bank_vault_unlock', vault_id=vault['id']) }}">
+              <button type="submit" class="btn fh-btn-outline btn-sm"><i class="bi bi-unlock"></i> Remove lock</button>
+            </form>
+            {% endif %}
+            {% if vault['status'] == 'active' %}
+            <form method="POST" action="{{ url_for('bank_vault_close', vault_id=vault['id']) }}"
+                  onsubmit="return confirm('Close this goal and return the balance to spendable?');">
+              <button type="submit" class="btn fh-btn-cancel btn-sm"><i class="bi bi-x-circle"></i> Close</button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-muted text-center mb-0">No savings goals yet. Create one for a child.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="fh-card mb-4" id="matching-rules">
+    <div class="fh-card-header"><i class="bi bi-people-fill"></i> Parent Matching Rules</div>
+    <div class="fh-card-body">
+      <p class="small text-muted">
+        Example: 50% match on child contributions, capped at 10.00 per week. A goal-specific rule overrides the all-goals rule.
+      </p>
+      <form method="POST" action="{{ url_for('bank_match_rule_save') }}" class="row g-2 align-items-end mb-3">
+        <div class="col-12 col-md-3">
+          <label class="form-label small mb-1">Child</label>
+          <select name="child_id" class="form-select form-select-sm" required>
+            {% for child in children %}
+            <option value="{{ child['id'] }}">{{ child['name'] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label small mb-1">Applies to</label>
+          <select name="vault_id" class="form-select form-select-sm">
+            <option value="">All goals</option>
+            {% for vault in vaults %}
+            <option value="{{ vault['id'] }}">{{ vault['user_name'] }} &middot; {{ vault['name'] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-1">Match %</label>
+          <input type="number" name="match_percent" class="form-control form-control-sm" min="0" max="100" step="0.01" value="50" required>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-1">Weekly cap</label>
+          <input type="number" name="weekly_cap" class="form-control form-control-sm" min="0" step="0.01" value="10" required>
+        </div>
+        <div class="col-12 col-md-2">
+          <input type="hidden" name="is_active" value="1">
+          <button type="submit" class="btn fh-btn-success btn-sm w-100"><i class="bi bi-save"></i> Save Rule</button>
+        </div>
+      </form>
+
+      {% if match_rules %}
+      <div class="table-responsive">
+        <table class="table fh-table">
+          <thead><tr><th>Child</th><th>Applies to</th><th>Match</th><th>Weekly cap</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {% for rule in match_rules %}
+            <tr>
+              <td>{{ rule['user_name'] }}</td>
+              <td>{{ rule['vault_name'] or 'All goals' }}</td>
+              <td>{{ '%.2f'|format(rule['match_percent']) }}%</td>
+              <td>{{ token(rule['weekly_cap'], token_icon) }}</td>
+              <td>
+                <span class="badge {{ 'bg-success' if rule['is_active'] else 'bg-secondary' }}">{{ 'Active' if rule['is_active'] else 'Inactive' }}</span>
+              </td>
+              <td class="text-end">
+                <form method="POST" action="{{ url_for('bank_match_rule_delete', rule_id=rule['id']) }}">
+                  <button type="submit" class="btn fh-btn-cancel btn-sm"><i class="bi bi-trash"></i></button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted text-center mb-0">No matching rules yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="fh-card mb-4">
+    <div class="fh-card-header"><i class="bi bi-hourglass-split"></i> Loan Requests</div>
+    <div class="fh-card-body">
+      {% if pending_loans %}
+      <div class="row g-3">
+        {% for loan in pending_loans %}
+        <div class="col-12 col-lg-6">
+          <div class="border rounded p-3 h-100">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div>
+                <div class="fw-bold">{{ loan['user_name'] }}</div>
+                <div class="small text-muted">{{ loan['purpose'] or 'No purpose given' }}</div>
+              </div>
+              <span class="badge bg-warning text-dark">{{ token(loan['amount_requested'], token_icon) }}</span>
+            </div>
+            <div class="small text-muted mb-2">{{ loan['term_weeks'] }} week term &middot; requested {{ loan['created_at']|localtime }}</div>
+            <form method="POST" action="{{ url_for('loan_approve', loan_id=loan['id']) }}" class="row g-2 align-items-end">
+              <div class="col-5">
+                <label class="form-label small mb-1">Annual interest %</label>
+                <input type="number" name="annual_rate" class="form-control form-control-sm" min="0" step="0.01" value="10">
+              </div>
+              <div class="col-3">
+                <label class="form-label small mb-1">Weeks</label>
+                <input type="number" name="term_weeks" class="form-control form-control-sm" min="1" max="104" value="{{ loan['term_weeks'] }}">
+              </div>
+              <div class="col-4">
+                <button type="submit" class="btn fh-btn-success btn-sm w-100">Approve</button>
+              </div>
+            </form>
+            <form method="POST" action="{{ url_for('loan_reject', loan_id=loan['id']) }}" class="input-group input-group-sm mt-2">
+              <input type="text" name="reason" class="form-control" placeholder="Reason (optional)">
+              <button type="submit" class="btn fh-btn-cancel">Reject</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-muted text-center mb-0">No pending loan requests.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="fh-card mb-4">
+    <div class="fh-card-header"><i class="bi bi-arrow-repeat"></i> Active Loans</div>
+    <div class="fh-card-body">
+      {% if active_loans %}
+      <div class="table-responsive">
+        <table class="table fh-table">
+          <thead><tr><th>Child</th><th>Principal</th><th>Total</th><th>Repaid</th><th>Remaining</th><th>Installment</th><th>Next Due</th></tr></thead>
+          <tbody>
+            {% for loan in active_loans %}
+            <tr>
+              <td>{{ loan['user_name'] }}</td>
+              <td>{{ token(loan['principal'], token_icon) }}</td>
+              <td>{{ token(loan['total_repayable'], token_icon) }}</td>
+              <td class="text-success">{{ token(loan['amount_repaid'], token_icon) }}</td>
+              <td class="fw-bold">{{ token(loan['remaining_balance'], token_icon) }}</td>
+              <td>{{ token(loan['installment_amount'], token_icon) }}</td>
+              <td>{{ loan['next_due_date'] or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted text-center mb-0">No active loans.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="fh-card">
+    <div class="fh-card-header"><i class="bi bi-clock-history"></i> Recent Bank Activity</div>
+    <div class="fh-card-body">
+      {% if recent_transactions %}
+      <div class="table-responsive">
+        <table class="table fh-table">
+          <thead><tr><th>Child</th><th>Type</th><th>Amount</th><th>Balance</th><th>When</th></tr></thead>
+          <tbody>
+            {% for tx in recent_transactions %}
+            <tr>
+              <td>{{ tx['user_name'] }}</td>
+              <td class="text-capitalize">{{ tx['type'] }}</td>
+              <td class="{{ 'text-success' if tx['amount'] >= 0 else 'text-danger' }} fw-semibold">
+                {{ '+' if tx['amount'] >= 0 else '' }}{{ token(tx['amount'], token_icon) }}
+              </td>
+              <td>{{ token(tx['balance_after'], token_icon) }}</td>
+              <td class="text-muted">{{ tx['created_at']|localtime }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted text-center mb-0">No bank activity yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+
+<div class="modal fade" id="vaultAddModal" tabindex="-1" aria-labelledby="vaultAddModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('bank_vault_add') }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="vaultAddModalLabel"><i class="bi bi-bullseye"></i> New Savings Goal</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Child</label>
+            <select name="child_id" class="form-select" required>
+              {% for child in children %}
+              <option value="{{ child['id'] }}">{{ child['name'] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Goal name</label>
+            <input type="text" name="name" class="form-control" maxlength="100" placeholder="e.g. New bike" required>
+          </div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label">Target amount</label>
+              <input type="number" name="target_amount" class="form-control" min="0.01" step="0.01" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Target date</label>
+              <input type="date" name="target_date" class="form-control">
+            </div>
+          </div>
+          <div class="mb-3 mt-3">
+            <label class="form-label">Description</label>
+            <input type="text" name="description" class="form-control" maxlength="500" placeholder="Optional">
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Icon</label>
+              <input type="text" name="icon" class="form-control" value="bi-bullseye" maxlength="60">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Colour</label>
+              <input type="color" name="color" class="form-control form-control-color" value="#10b981">
+            </div>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="lock_until_date" value="1" id="lockUntilDate">
+            <label class="form-check-label" for="lockUntilDate">Lock withdrawals until the target date</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="lock_until_target" value="1" id="lockUntilTarget">
+            <label class="form-check-label" for="lockUntilTarget">Lock withdrawals until the target balance is reached</label>
+          </div>
+          <p class="small text-muted mt-2 mb-0">
+            If both locks are set, the goal unlocks when either condition is met.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-success"><i class="bi bi-plus-lg"></i> Create Goal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

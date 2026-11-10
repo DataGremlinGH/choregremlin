@@ -2,8 +2,8 @@
 {% from 'macros.html' import nav %}
 {% block title %}2FA Setup - {{ app_name }}{% endblock %}
 {% block body %}
-{% if g.user %}{{ nav(active='security') }}{% endif %}
-<div class="container-fluid px-3 px-lg-4 py-4" style="max-width:500px;">
+{% if g.user and not g.pending_2fa %}{{ nav(active='security') }}{% endif %}
+<div class="fh-page fh-page--form">
   <h2 class="fh-page-title mb-4"><i class="bi bi-shield-lock-fill"></i> Two-Factor Authentication</h2>
 
   {% if success %}
@@ -20,12 +20,17 @@
     </div>
   </div>
   {% else %}
+  {% if g.pending_2fa %}
+  <div class="alert alert-warning fh-alert mb-3">
+    <i class="bi bi-shield-lock-fill"></i> Administrator accounts must set up two-factor authentication before using {{ app_name }}.
+  </div>
+  {% endif %}
   <div class="fh-card mb-3">
     <div class="fh-card-header"><i class="bi bi-qr-code"></i> Scan QR Code</div>
     <div class="fh-card-body text-center">
       <p class="text-muted mb-3">Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.).</p>
       <div class="fh-qr-container">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ uri|urlencode }}" alt="2FA QR Code" class="fh-qr-img">
+        <img src="{{ qr_data_uri }}" alt="2FA QR Code" class="fh-qr-img">
       </div>
       <div class="mt-3">
         <label class="fh-label">Or enter this code manually</label>
@@ -38,7 +43,6 @@
     <div class="fh-card-header"><i class="bi bi-shield-check"></i> Verify</div>
     <div class="fh-card-body">
       <form method="POST" action="{{ url_for('setup_2fa') }}">
-        <input type="hidden" name="secret" value="{{ secret }}">
         <div class="mb-3">
           <label class="fh-label">Enter the 6-digit code from your app</label>
           <input type="text" name="code" class="form-control fh-input" maxlength="6" pattern="[0-9]*" required autofocus style="font-size:1.5rem; text-align:center; letter-spacing:0.3rem;">

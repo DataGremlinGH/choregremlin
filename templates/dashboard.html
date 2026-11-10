@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import nav %}
+{% from 'macros.html' import nav, token %}
 {% block title %}Dashboard - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='dashboard') }}
-<div class="container-fluid px-3 px-lg-4 py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="fh-page">
+  <div class="fh-page-header">
     <h2 class="fh-page-title"><i class="bi bi-speedometer2"></i> Dashboard</h2>
-    <form method="GET" class="d-flex align-items-center gap-2">
+    <form method="GET" class="d-flex align-items-center gap-2 flex-wrap">
       <label class="fh-label mb-0">Month</label>
       <input type="month" name="month" value="{{ selected_month }}" class="form-control fh-input-auto" onchange="this.form.submit()">
     </form>
@@ -23,7 +23,7 @@
         </div>
         <div class="fh-stat-body">
           <div class="fh-stat-label">Total Earned</div>
-          <div class="fh-stat-value text-warning">{{ token_icon|safe }}{{ "%.2f"|format(total_earned) }}</div>
+          <div class="fh-stat-value text-warning">{{ token(total_earned, token_icon) }}</div>
         </div>
       </div>
     </div>
@@ -48,8 +48,8 @@
           {% else %}<i class="bi bi-hourglass-split"></i>{% endif %}
         </div>
         <div class="fh-stat-body">
-          <div class="fh-stat-label">In Progress Now</div>
-          <div class="fh-stat-value text-info">{{ active_logs|length }}</div>
+          <div class="fh-stat-label">Pending Approval</div>
+          <div class="fh-stat-value text-info">{{ pending_approvals|length }}</div>
         </div>
       </div>
     </div>
@@ -78,7 +78,7 @@
           </div>
           <div class="fh-earning-amount">
             <span class="text-muted me-2">{{ e['chore_count'] }} chores</span>
-            <span class="text-warning fw-bold">{{ token_icon|safe }}{{ "%.2f"|format(e['total_earned']) }}</span>
+            <span class="text-warning fw-bold">{{ token(e['total_earned'], token_icon) }}</span>
           </div>
         </div>
         {% endfor %}
@@ -89,16 +89,16 @@
     </div>
   </div>
 
-  <!-- Active chores -->
-  {% if active_logs %}
+  <!-- Pending approvals -->
+  {% if pending_approvals %}
   <div class="fh-card">
-    <div class="fh-card-header"><i class="bi bi-hourglass-split"></i> Active Chores Right Now</div>
+    <div class="fh-card-header"><i class="bi bi-clipboard-check-fill"></i> Chores Waiting for Approval</div>
     <div class="fh-card-body">
       <div class="table-responsive">
         <table class="table fh-table">
-          <thead><tr><th>Kid</th><th>Chore</th><th>Started</th><th>Elapsed</th></tr></thead>
+          <thead><tr><th>Kid</th><th>Chore</th><th>Completed</th></tr></thead>
           <tbody>
-            {% for log in active_logs %}
+            {% for log in pending_approvals %}
             <tr>
               <td>
                 <div class="d-flex align-items-center gap-2">
@@ -109,8 +109,7 @@
                 </div>
               </td>
               <td><i class="bi {{ log['chore_icon'] }} me-1"></i>{{ log['chore_name'] }}</td>
-              <td class="text-muted">{{ log['started_at'][:16] }}</td>
-              <td><span class="fh-timer" data-started="{{ log['started_at'] }}">0m 0s</span></td>
+              <td class="text-muted">{{ log['finished_at']|localtime }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -120,7 +119,4 @@
   </div>
   {% endif %}
 </div>
-{% endblock %}
-{% block scripts %}
-<script src="/static/js/kiosk-timer.js"></script>
 {% endblock %}

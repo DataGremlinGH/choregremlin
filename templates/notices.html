@@ -3,8 +3,8 @@
 {% block title %}Notices - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='notices') }}
-<div class="container-fluid px-3 px-lg-4 py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="fh-page">
+  <div class="fh-page-header">
     <h2 class="fh-page-title"><i class="bi bi-megaphone-fill"></i> Family Notices</h2>
     <button class="btn fh-btn-cyan" data-bs-toggle="modal" data-bs-target="#addNoticeModal">
       <i class="bi bi-plus-circle-fill"></i> Add Notice
@@ -25,8 +25,8 @@
           </div>
           {% if n['body'] %}<p class="text-muted mb-2">{{ n['body'] }}</p>{% endif %}
           <div class="d-flex justify-content-between align-items-center">
-            <span class="text-muted small"><i class="bi bi-clock me-1"></i>{{ n['created_at'][:16] }}</span>
-            {% if n['expires_at'] %}<span class="badge bg-warning">Expires: {{ n['expires_at'][:10] }}</span>{% endif %}
+            <span class="text-muted small"><i class="bi bi-clock me-1"></i>{{ n['created_at']|localtime }}</span>
+            {% if n['expires_at'] %}<span class="badge bg-warning">Expires: {{ n['expires_at']|localtime('%d %b %Y') }}</span>{% endif %}
             {% if not n['is_active'] %}<span class="badge bg-secondary">Inactive</span>{% endif %}
           </div>
         </div>

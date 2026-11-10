@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import nav %}
+{% from 'macros.html' import nav, token %}
 {% block title %}Drop Chores - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='drop') }}
-<div class="container-fluid px-3 px-lg-4 py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="fh-page">
+  <div class="fh-page-header">
     <h2 class="fh-page-title"><i class="bi bi-droplet-fill"></i> Drop Chores</h2>
     <button class="btn fh-btn-cyan" data-bs-toggle="modal" data-bs-target="#addDropModal">
       <i class="bi bi-plus-circle-fill"></i> Post Drop Chore
@@ -17,9 +17,12 @@
 
   <div class="row g-3">
     {% for drop in drops %}
-    <div class="col-12 col-sm-6 col-lg-4">
+    <div class="col-12 col-sm-6 col-lg-4 drop-item" data-drop-id="{{ drop['id'] }}"
+         data-drop-seconds="{{ drop['seconds_remaining'] }}"
+         data-drop-current="{{ drop['current_points'] }}"
+         data-drop-decay="{{ drop['decay_per_minute'] }}">
       <div class="fh-card fh-drop-card">
-        <div class="d-flex align-items-start justify-content-between mb-2">
+        <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
           <div class="fh-chore-icon">
             {% if drop['chore_image'] %}
             <img src="/static/{{ drop['chore_image'] }}" alt="" style="width:32px;height:32px;border-radius:8px;">
@@ -29,13 +32,19 @@
             <i class="bi bi-droplet-fill"></i>
             {% endif %}
           </div>
-          <span class="badge bg-success fs-6">{{ token_icon|safe }}{{ "%.2f"|format(drop['current_points']) }}</span>
+          <span class="badge bg-success fs-6 d-inline-flex align-items-center gap-1 flex-shrink-0">
+            {{ token_icon }} <span data-drop-points>{{ "%.2f"|format(drop['current_points']) }}</span>
+          </span>
         </div>
-        <h6>{{ drop['name'] }}</h6>
-        <div class="text-muted small mb-2">
-          Started: {{ drop['posted_at'][:16] }}<br>
+        <h6 class="fh-drop-name">{{ drop['name'] }}</h6>
+        <div class="text-muted small mb-2 fh-drop-meta">
+          <div class="fh-drop-countdown">
+            <i class="bi bi-hourglass-split"></i>
+            <span data-drop-countdown>{{ '%02d:%02d'|format(drop['seconds_remaining'] // 60, drop['seconds_remaining'] % 60) }}</span>
+          </div>
+          Started: {{ drop['posted_at']|localtime }}<br>
           Decay: {{ drop['decay_per_minute'] }} {{ token_plural }}/min<br>
-          {% if drop['expires_at'] %}Expires: {{ drop['expires_at'][:16] }}{% endif %}
+          {% if drop['expires_at'] %}Expires: {{ drop['expires_at']|localtime }}{% endif %}
         </div>
         <form method="POST" action="{{ url_for('delete_drop_chore', drop_id=drop['id']) }}" onsubmit="return confirm('Remove this drop chore?')">
           <button class="btn btn-sm fh-btn-danger"><i class="bi bi-trash"></i> Remove</button>
@@ -50,6 +59,8 @@
     {% endfor %}
   </div>
 </div>
+
+<script src="/static/js/drop-chores.js"></script>
 
 <!-- Add Drop Chore Modal -->
 <div class="modal fade" id="addDropModal" tabindex="-1">

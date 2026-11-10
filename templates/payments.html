@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import nav %}
+{% from 'macros.html' import nav, token %}
 {% block title %}Payments - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='payments') }}
-<div class="container-fluid px-3 px-lg-4 py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+<div class="fh-page">
+  <div class="fh-page-header">
     <h2 class="fh-page-title"><i class="bi bi-cash-coin"></i> Payments & Allowance</h2>
-    <form method="GET" class="d-flex align-items-center gap-2">
+    <form method="GET" class="d-flex align-items-center gap-2 flex-wrap">
       <select name="child_id" class="form-select fh-input-auto" onchange="this.form.submit()">
         <option value="">All Kids</option>
         {% for c in children %}
@@ -17,9 +17,9 @@
     </form>
   </div>
 
-  <!-- Balances with GBP conversion -->
+  <!-- Balances with currency conversion -->
   <div class="fh-card mb-4">
-    <div class="fh-card-header"><i class="bi bi-wallet2"></i> Balances &amp; GBP Conversion</div>
+    <div class="fh-card-header"><i class="bi bi-wallet2"></i> Balances &amp; Currency Conversion</div>
     <div class="fh-card-body">
       <div class="row g-3 mb-3">
         {% for c in children %}
@@ -28,11 +28,11 @@
             <div class="fh-stat-body">
               <div class="fh-stat-label">{{ c['name'] }}</div>
               <div class="fh-stat-value {{ 'text-warning' if balances[c['id']] > 0 else 'text-muted' }}">
-                {{ token_icon|safe }}{{ "%.2f"|format(balances[c['id']]) }}
+                {{ token(balances[c['id']], token_icon) }}
               </div>
               {% if balances[c['id']] > 0 %}
               <div class="fh-stat-label text-muted mt-1">
-                &pound;{{ "%.2f"|format(balances_gbp[c['id']]) }}
+                {{ currency_symbol }}{{ "%.2f"|format(balances_gbp[c['id']]) }}
               </div>
               {% endif %}
             </div>
@@ -43,9 +43,9 @@
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top">
         <div>
           <span class="text-muted">Total Outstanding:</span>
-          <span class="text-warning fw-bold fs-5">{{ token_icon|safe }}{{ "%.2f"|format(total_tokens) }}</span>
-          <span class="text-muted ms-2">= &pound;{{ "%.2f"|format(total_gbp) }}</span>
-          <span class="text-muted small ms-2">(at &pound;{{ "%.4f"|format(gbp_value) }} per {{ token_singular }})</span>
+          <span class="text-warning fw-bold fs-5">{{ token(total_tokens, token_icon) }}</span>
+          <span class="text-muted ms-2">= {{ currency_symbol }}{{ "%.2f"|format(total_gbp) }}</span>
+          <span class="text-muted small ms-2">(at {{ currency_symbol }}{{ "%.4f"|format(gbp_value) }} per {{ token_singular }})</span>
         </div>
       </div>
     </div>
@@ -57,7 +57,7 @@
       <div class="fh-card mb-3">
         <div class="fh-card-header"><i class="bi bi-bank2"></i> Payout (End of Month)</div>
         <div class="fh-card-body">
-          <p class="text-muted small">Pays out every child's full balance to zero and records a single payout entry per child with the GBP amount.</p>
+          <p class="text-muted small">Pays out every child's full balance to zero and records a single payout entry per child with the converted amount.</p>
           <form method="POST" action="{{ url_for('payout_all') }}" onsubmit="return confirm('Pay out ALL balances to zero? This cannot be undone.')">
             <div class="mb-3">
               <label class="fh-label">Payment Method</label>
@@ -125,7 +125,7 @@
                 <th>Paid To</th>
                 <th>Paid By</th>
                 <th>Tokens</th>
-                <th>GBP</th>
+                <th>Value</th>
                 <th>Method</th>
                 <th>Description</th>
                 {% if g.user['role'] == 'admin' %}<th></th>{% endif %}
@@ -133,14 +133,14 @@
               <tbody>
                 {% for p in payments %}
                 <tr>
-                  <td class="text-muted">{{ p['created_at'][:16] }}</td>
+                  <td class="text-muted">{{ p['created_at']|localtime }}</td>
                   <td>{{ p['user_name'] }}</td>
                   <td class="text-muted">{{ p['payer_name'] or '—' }}</td>
                   <td class="fw-bold">
-                    {% if p['token_amount'] and p['token_amount'] > 0 %}{{ token_icon|safe }}{{ "%.2f"|format(p['token_amount']) }}{% else %}—{% endif %}
+                    {% if p['token_amount'] and p['token_amount'] > 0 %}{{ token(p['token_amount'], token_icon) }}{% else %}—{% endif %}
                   </td>
                   <td>
-                    {% if p['gbp_amount'] and p['gbp_amount'] > 0 %}&pound;{{ "%.2f"|format(p['gbp_amount']) }}{% else %}—{% endif %}
+                    {% if p['gbp_amount'] and p['gbp_amount'] > 0 %}{{ currency_symbol }}{{ "%.2f"|format(p['gbp_amount']) }}{% else %}—{% endif %}
                   </td>
                   <td>
                     {% if p['payout_method'] %}

@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav %}
+{% block title %}Rewards - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='rewards') }}
+<div class="fh-page">
+  <div class="fh-page-header">
+    <h2 class="fh-page-title"><i class="bi bi-trophy-fill"></i> Rewards &amp; Streaks</h2>
+    <span class="badge bg-success fs-6">XP, levels and unlocks</span>
+  </div>
+
+  {% if children %}
+  <div class="row g-3 mb-4">
+    {% for child in children %}
+    <div class="col-12 col-md-6 col-xl-4">
+      <div class="fh-card h-100">
+        <div class="fh-card-body">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="fh-reward-avatar" style="border-color: {{ child['color'] }};">
+              <i class="bi {{ child['equipped_avatar_item']['icon'] if child['equipped_avatar_item'] else 'bi-person-fill' }}"></i>
+            </div>
+            <div class="flex-fill">
+              <div class="fh-kid-manage-name">{{ child['name'] }}</div>
+              <div class="d-flex gap-1 flex-wrap mt-1">
+                <span class="badge bg-info">Level {{ child['level'] or 1 }}</span>
+                <span class="badge bg-warning text-dark"><i class="bi bi-fire"></i> {{ child['current_streak'] or 0 }} day streak</span>
+                {% if child['equipped_badge_item'] %}
+                <span class="badge bg-success"><i class="bi {{ child['equipped_badge_item']['icon'] }}"></i> {{ child['equipped_badge_item']['name'] }}</span>
+                {% endif %}
+                <span class="badge bg-primary"><i class="bi bi-award-fill"></i> {{ child['achievement_summary']['unlocked'] }}/{{ child['achievement_summary']['total'] }} achievements</span>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-between small text-muted mb-1">
+            <span>{{ child['total_xp'] or 0 }} XP</span>
+            <span>{{ child['progress']['xp_into_level'] }} / {{ child['progress']['xp_for_next_level'] }} to level {{ (child['level'] or 1) + 1 }}</span>
+          </div>
+          <div class="progress fh-xp-progress" role="progressbar" aria-valuenow="{{ child['progress']['progress_percent'] }}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar" style="width: {{ child['progress']['progress_percent'] }}%"></div>
+          </div>
+          <div class="d-flex justify-content-between small text-muted mt-2">
+            <span>Longest streak: {{ child['longest_streak'] or 0 }} days</span>
+            <span>{{ child['last_completed_date'] or 'No chores yet' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fh-card mb-4">
+    <div class="fh-card-body text-center text-muted py-4">
+      <i class="bi bi-people fs-1 d-block mb-2"></i>
+      <p class="mb-0">Add a child to start earning XP and streaks.</p>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+      <div class="fh-card h-100">
+        <div class="fh-card-header"><i class="bi bi-person-badge-fill"></i> Avatar Store</div>
+        <div class="fh-card-body">
+          <div class="fh-reward-catalog">
+            {% for item in avatars %}
+            <div class="fh-reward-catalog-item">
+              <span class="fh-reward-catalog-icon"><i class="bi {{ item['icon'] }}"></i></span>
+              <div>
+                <div class="fw-semibold">{{ item['name'] }}</div>
+                <div class="text-muted small">{{ item['requirement'] }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="fh-card h-100">
+        <div class="fh-card-header"><i class="bi bi-award-fill"></i> Title Badges</div>
+        <div class="fh-card-body">
+          <div class="fh-reward-catalog">
+            {% for item in badges %}
+            <div class="fh-reward-catalog-item">
+              <span class="fh-reward-catalog-icon"><i class="bi {{ item['icon'] }}"></i></span>
+              <div>
+                <div class="fw-semibold">{{ item['name'] }}</div>
+                <div class="text-muted small">{{ item['requirement'] }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fh-card">
+    <div class="fh-card-header"><i class="bi bi-clock-history"></i> Recent XP</div>
+    <div class="fh-card-body">
+      {% if xp_events %}
+      <div class="table-responsive">
+        <table class="table fh-table">
+          <thead><tr><th>Child</th><th>XP</th><th>Streak</th><th>Source</th><th>When</th></tr></thead>
+          <tbody>
+            {% for event in xp_events %}
+            <tr>
+              <td>{{ event['user_name'] }}</td>
+              <td class="text-success fw-bold">+{{ event['xp_awarded'] }}</td>
+              <td>{{ event['streak_days'] }} day{{ '' if event['streak_days'] == 1 else 's' }} &times; {{ event['multiplier'] }}</td>
+              <td class="text-muted">{{ event['source_type']|title }} #{{ event['source_id'] or '-' }}</td>
+              <td class="text-muted">{{ event['created_at']|localtime }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted text-center mb-0">No XP awarded yet. Approve a chore to get started.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

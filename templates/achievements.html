@@ -1,0 +1,339 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav %}
+{% block title %}Achievements - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='achievements') }}
+<div class="fh-page">
+  <div class="fh-page-header">
+    <div>
+      <h2 class="fh-page-title"><i class="bi bi-award-fill"></i> Achievements &amp; Milestones</h2>
+      <p class="text-muted mb-0">Automatic badges, custom milestones and family celebrations.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <form method="POST" action="{{ url_for('achievement_evaluate_all') }}">
+        <button class="btn fh-btn-outline"><i class="bi bi-arrow-repeat"></i> Check Now</button>
+      </form>
+      <button class="btn fh-btn-cyan" data-bs-toggle="modal" data-bs-target="#addMilestoneModal">
+        <i class="bi bi-plus-circle-fill"></i> Add Milestone
+      </button>
+      <button class="btn fh-btn-outline" data-bs-toggle="modal" data-bs-target="#broadcastModal">
+        <i class="bi bi-megaphone-fill"></i> Broadcast
+      </button>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    {% for child in children %}
+    <div class="col-12 col-md-6 col-xl-4">
+      <div class="fh-card h-100">
+        <div class="fh-card-body">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="fh-kid-photo" style="width:52px;height:52px;border-color: {{ child['color'] }};">
+              {% if child['photo_path'] %}
+              <img src="/static/{{ child['photo_path'] }}" alt="{{ child['name'] }}">
+              {% else %}
+              <span class="fh-kid-initial" style="font-size:1.4rem;color: {{ child['color'] }};">{{ child['name'][0]|upper }}</span>
+              {% endif %}
+            </div>
+            <div class="flex-fill">
+              <div class="fh-kid-manage-name">{{ child['name'] }}</div>
+              <div class="small text-muted">
+                {{ child['achievement_summary']['unlocked'] }} of {{ child['achievement_summary']['total'] }} badges unlocked
+              </div>
+            </div>
+          </div>
+          {% set pct = (child['achievement_summary']['unlocked'] / child['achievement_summary']['total'] * 100) if child['achievement_summary']['total'] else 0 %}
+          <div class="progress fh-xp-progress" role="progressbar" aria-valuenow="{{ pct|round(1) }}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar" style="width: {{ pct|round(1) }}%"></div>
+          </div>
+          {% if child['latest_achievement'] %}
+          <div class="d-flex align-items-center gap-2 mt-3 small">
+            <span class="fh-achievement-mini-icon" style="--badge-color: {{ child['latest_achievement']['color'] }};">
+              <i class="bi {{ child['latest_achievement']['icon'] }}"></i>
+            </span>
+            <span class="text-muted">Latest: <strong>{{ child['latest_achievement']['name'] }}</strong></span>
+          </div>
+          {% else %}
+          <div class="text-muted small mt-3">No achievements unlocked yet.</div>
+          {% endif %}
+          <a href="{{ url_for('edit_kid', kid_id=child['id']) }}" class="btn btn-sm fh-btn-outline mt-3">
+            <i class="bi bi-award"></i> View badge gallery
+          </a>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="col-12">
+      <div class="fh-card"><div class="fh-card-body text-center text-muted py-4">
+        <i class="bi bi-people fs-1 d-block mb-2"></i>
+        Add a child to start collecting achievements.
+      </div></div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-xl-8">
+      <div class="fh-card h-100">
+        <div class="fh-card-header"><i class="bi bi-collection-fill"></i> Built-in Achievement Badges</div>
+        <div class="fh-card-body">
+          <div class="fh-reward-store">
+            {% for item in builtin_achievements %}
+            <div class="fh-reward-store-card fh-achievement-card" style="--badge-color: {{ item['color'] }};">
+              <div class="fh-reward-store-icon"><i class="bi {{ item['icon'] }}"></i></div>
+              <div class="fh-reward-store-name">{{ item['name'] }}</div>
+              <div class="fh-achievement-category">{{ item['category']|replace('_', ' ')|title }}</div>
+              <div class="fh-reward-requirement">{{ item['description'] }}</div>
+              <div class="fh-achievement-target"><i class="bi {{ item['metric_icon'] }}"></i> {{ item['requirement'] }}</div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-4">
+      <div class="fh-card h-100">
+        <div class="fh-card-header"><i class="bi bi-stars"></i> Custom Milestones</div>
+        <div class="fh-card-body">
+          {% if custom_milestones %}
+          <div class="d-flex flex-column gap-2">
+            {% for m in custom_milestones %}
+            <div class="fh-custom-milestone {{ '' if m['is_active'] else 'fh-custom-milestone-inactive' }}">
+              <div class="d-flex align-items-center gap-2">
+                <span class="fh-achievement-mini-icon" style="--badge-color: {{ m['color'] }};">
+                  <i class="bi {{ m['icon'] }}"></i>
+                </span>
+                <div class="flex-fill">
+                  <div class="fw-semibold">{{ m['name'] }}</div>
+                  <div class="small text-muted">{{ m['requirement'] }}</div>
+                  <div class="small text-cyan">{{ m['reward_label'] }}</div>
+                </div>
+              </div>
+              <div class="d-flex gap-1 mt-2">
+                <form method="POST" action="{{ url_for('achievement_milestone_toggle', milestone_id=m['id']) }}">
+                  <button class="btn btn-sm fh-btn-outline" title="{{ 'Pause' if m['is_active'] else 'Activate' }}">
+                    <i class="bi {{ 'bi-pause-fill' if m['is_active'] else 'bi-play-fill' }}"></i>
+                  </button>
+                </form>
+                <form method="POST" action="{{ url_for('achievement_milestone_delete', milestone_id=m['id']) }}" onsubmit="return confirm('Delete this milestone?')">
+                  <button class="btn btn-sm fh-btn-danger" title="Delete"><i class="bi bi-trash"></i></button>
+                </form>
+                {% if not m['is_active'] %}<span class="badge bg-secondary align-self-center">Paused</span>{% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-flag fs-1 d-block mb-2"></i>
+            No custom milestones yet.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-xl-7">
+      <div class="fh-card h-100">
+        <div class="fh-card-header"><i class="bi bi-clock-history"></i> Recent Unlocks</div>
+        <div class="fh-card-body">
+          {% if unlocks %}
+          <div class="table-responsive">
+            <table class="table fh-table">
+              <thead><tr><th>Child</th><th>Achievement</th><th>Reward</th><th>When</th></tr></thead>
+              <tbody>
+                {% for unlock in unlocks %}
+                <tr>
+                  <td>{{ unlock['user_name'] }}</td>
+                  <td>
+                    <span class="d-inline-flex align-items-center gap-2">
+                      <span class="fh-achievement-mini-icon" style="--badge-color: {{ unlock['color'] }};">
+                        <i class="bi {{ unlock['icon'] }}"></i>
+                      </span>
+                      <span>{{ unlock['name'] }}</span>
+                    </span>
+                  </td>
+                  <td class="text-muted">
+                    {% if unlock['reward_type'] == 'bonus' %}{{ token_icon }} {{ '%.2f'|format(unlock['reward_value']) }}
+                    {% elif unlock['reward_type'] == 'xp' %}+{{ unlock['reward_value']|int }} XP
+                    {% else %}Badge{% endif %}
+                  </td>
+                  <td class="text-muted">{{ unlock['unlocked_at']|localtime }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="text-muted text-center mb-0">No achievements unlocked yet.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-5">
+      <div class="fh-card h-100">
+        <div class="fh-card-header"><i class="bi bi-megaphone-fill"></i> Family Broadcasts</div>
+        <div class="fh-card-body">
+          {% if broadcasts %}
+          <div class="d-flex flex-column gap-2">
+            {% for b in broadcasts %}
+            <div class="fh-broadcast-row {{ '' if b['is_active'] else 'fh-broadcast-row-inactive' }}">
+              <span class="fh-achievement-mini-icon" style="--badge-color: {{ b['color'] }};">
+                <i class="bi {{ b['icon'] }}"></i>
+              </span>
+              <div class="flex-fill">
+                <div class="fw-semibold">{{ b['title'] }}</div>
+                {% if b['body'] %}<div class="small text-muted">{{ b['body'] }}</div>{% endif %}
+                <div class="small text-muted">
+                  {{ b['kind']|title }}
+                  {% if b['child_name'] %} &middot; {{ b['child_name'] }}{% endif %}
+                  &middot; {{ b['created_at']|localtime }}
+                  {% if b['expires_at'] %} &middot; expires {{ b['expires_at']|localtime('%d %b %Y %H:%M') }}{% endif %}
+                </div>
+              </div>
+              {% if b['is_active'] %}
+              <form method="POST" action="{{ url_for('achievement_broadcast_delete', broadcast_id=b['id']) }}">
+                <button class="btn btn-sm fh-btn-danger" title="Clear broadcast"><i class="bi bi-x-lg"></i></button>
+              </form>
+              {% else %}
+              <span class="badge bg-secondary align-self-center">Cleared</span>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-megaphone fs-1 d-block mb-2"></i>
+            No broadcasts yet.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="addMilestoneModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title"><i class="bi bi-flag-fill"></i> Add Custom Milestone</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('achievement_milestone_add') }}">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-8">
+              <label class="fh-label">Milestone Name</label>
+              <input type="text" name="name" class="form-control fh-input" maxlength="100" required placeholder="e.g. Read 5 books">
+            </div>
+            <div class="col-md-4">
+              <label class="fh-label">Icon</label>
+              <input type="text" name="icon" class="form-control fh-input" value="bi-award-fill" placeholder="bi-award-fill">
+            </div>
+            <div class="col-12">
+              <label class="fh-label">Description</label>
+              <input type="text" name="description" class="form-control fh-input" maxlength="500" placeholder="What does this milestone celebrate?">
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Track</label>
+              <select name="metric" class="form-select fh-input">
+                {% for metric in metrics %}
+                <option value="{{ metric['key'] }}">{{ metric['label'] }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Target</label>
+              <input type="number" name="threshold" class="form-control fh-input" min="0.01" step="0.01" value="1" required>
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Reward</label>
+              <select name="reward_type" class="form-select fh-input">
+                <option value="none">Badge only</option>
+                <option value="xp">Bonus XP</option>
+                <option value="bonus">Bonus payment</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Reward Amount</label>
+              <input type="number" name="reward_value" class="form-control fh-input" min="0" step="0.01" value="0">
+              <div class="form-text">Ignored when reward is badge only.</div>
+            </div>
+            <div class="col-md-4">
+              <label class="fh-label">Colour</label>
+              <input type="color" name="color" class="form-control form-control-color fh-input" value="#10b981" style="height:42px;">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer fh-modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-check-lg"></i> Add Milestone</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="broadcastModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title"><i class="bi bi-megaphone-fill"></i> Family Broadcast</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('achievement_broadcast_create') }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="fh-label">Title</label>
+            <input type="text" name="title" class="form-control fh-input" maxlength="120" required placeholder="Celebrate something!">
+          </div>
+          <div class="mb-3">
+            <label class="fh-label">Message</label>
+            <textarea name="body" class="form-control fh-input" rows="3" maxlength="500" placeholder="Optional message"></textarea>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="fh-label">Type</label>
+              <select name="kind" class="form-select fh-input">
+                <option value="celebration">Celebration</option>
+                <option value="general">General</option>
+                <option value="achievement">Achievement</option>
+                <option value="milestone">Milestone</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Child (optional)</label>
+              <select name="child_id" class="form-select fh-input">
+                <option value="">Whole family</option>
+                {% for child in children %}
+                <option value="{{ child['id'] }}">{{ child['name'] }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Icon</label>
+              <input type="text" name="icon" class="form-control fh-input" value="bi-megaphone-fill">
+            </div>
+            <div class="col-md-6">
+              <label class="fh-label">Colour</label>
+              <input type="color" name="color" class="form-control form-control-color fh-input" value="#10b981" style="height:42px;">
+            </div>
+            <div class="col-12">
+              <label class="fh-label">Expires (optional)</label>
+              <input type="datetime-local" name="expires_at" class="form-control fh-input">
+              <div class="form-text">Leave blank to keep the broadcast until it is cleared.</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer fh-modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-send-fill"></i> Broadcast</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

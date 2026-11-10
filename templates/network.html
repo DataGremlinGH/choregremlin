@@ -3,7 +3,7 @@
 {% block title %}Network - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='network') }}
-<div class="container-fluid px-3 px-lg-4 py-4" style="max-width:700px;">
+<div class="fh-page fh-page--narrow">
   <h2 class="fh-page-title mb-4"><i class="bi bi-wifi"></i> Network Settings</h2>
 
   <div class="fh-card mb-3">
@@ -19,8 +19,8 @@
           <div class="fh-net-info-value">{{ net.hostname }}</div>
         </div>
         <div class="fh-net-info-item">
-          <div class="fh-net-info-label"><i class="bi bi-link-45deg"></i> Port</div>
-          <div class="fh-net-info-value">{{ net.port }}</div>
+          <div class="fh-net-info-label"><i class="bi bi-link-45deg"></i> Web Port</div>
+          <div class="fh-net-info-value">{{ net.public_port }}</div>
         </div>
         <div class="fh-net-info-item">
           <div class="fh-net-info-label"><i class="bi bi-globe"></i> By IP</div>
@@ -29,6 +29,16 @@
         <div class="fh-net-info-item">
           <div class="fh-net-info-label"><i class="bi bi-house-door"></i> By Local Name</div>
           <div class="fh-net-info-value fh-net-url">{{ net.local_url }}</div>
+        </div>
+        <div class="fh-net-info-item">
+          <div class="fh-net-info-label"><i class="bi bi-lock-fill"></i> Connection</div>
+          <div class="fh-net-info-value">
+            {% if net.https %}
+            <span class="badge bg-success">HTTPS</span>
+            {% else %}
+            <span class="badge bg-secondary">HTTP</span>
+            {% endif %}
+          </div>
         </div>
         <div class="fh-net-info-item">
           <div class="fh-net-info-label"><i class="bi bi-shield"></i> Remote Access</div>
@@ -76,6 +86,9 @@
         <li><i class="bi bi-arrow-right-short text-cyan"></i> The IP should be reserved in your router (DHCP reservation) or set as static so it doesn't change.</li>
         <li><i class="bi bi-arrow-right-short text-cyan"></i> <code>familyhub.local</code> works via Avahi/mDNS &mdash; no setup needed on most Pi installs.</li>
         <li><i class="bi bi-arrow-right-short text-cyan"></i> All devices must be on the same Wi-Fi network to access the hub.</li>
+        {% if net.https %}
+        <li><i class="bi bi-arrow-right-short text-cyan"></i> Install the private trust certificate from the <a href="{{ url_for('trust_page') }}" class="fh-link">Trust Page</a> on each device.</li>
+        {% endif %}
       </ul>
     </div>
   </div>

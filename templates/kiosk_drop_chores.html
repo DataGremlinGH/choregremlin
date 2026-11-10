@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
 {% block title %}Drop Chores - {{ app_name }}{% endblock %}
 {% block body %}
-<div class="container-fluid px-3 py-4">
-  <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="fh-page fh-page--kiosk">
+  <div class="fh-page-header">
     <a href="{{ url_for('child_chores') }}" class="btn fh-btn-outline btn-sm">
       <i class="bi bi-arrow-left"></i> Back
     </a>
@@ -18,7 +18,10 @@
 
   <div id="dropList" class="row g-3 justify-content-center">
     {% for drop in drops %}
-    <div class="col-12 col-sm-6 col-lg-4 drop-item" data-id="{{ drop['id'] }}">
+    <div class="col-12 col-sm-6 col-lg-4 drop-item" data-drop-id="{{ drop['id'] }}"
+         data-drop-seconds="{{ drop['seconds_remaining'] }}"
+         data-drop-current="{{ drop['current_points'] }}"
+         data-drop-decay="{{ drop['decay_per_minute'] }}">
       <div class="fh-card fh-drop-kiosk-card text-center p-4">
         <div class="fh-drop-emoji mb-2">
           {% if drop['chore_image'] %}
@@ -29,9 +32,16 @@
           <i class="bi bi-droplet-fill" style="font-size:2.5rem;"></i>
           {% endif %}
         </div>
-        <h5>{{ drop['name'] }}</h5>
+        <h5 class="fh-drop-name">{{ drop['name'] }}</h5>
+        <div class="fh-drop-countdown mb-2">
+          <i class="bi bi-hourglass-split"></i>
+          <span data-drop-countdown>{{ '%02d:%02d'|format(drop['seconds_remaining'] // 60, drop['seconds_remaining'] % 60) }}</span>
+        </div>
         <div class="fh-drop-points mb-3" data-drop-id="{{ drop['id'] }}">
-          <span class="badge bg-success fs-4">{% if token_logo_type == 'upload' and token_logo %}<img src="/static/{{ token_logo }}" alt="" style="width:18px;height:18px;vertical-align:middle;">{% else %}{{ token_emoji }}{% endif %}<span class="drop-points" data-id="{{ drop['id'] }}">{{ "%.2f"|format(drop['current_points']) }}</span></span>
+          <span class="badge bg-success fs-4 d-inline-flex align-items-center gap-1">
+            {% if token_logo_type == 'upload' and token_logo %}<img src="/static/{{ token_logo }}" alt="" style="width:18px;height:18px;vertical-align:middle;">{% else %}{{ token_emoji }}{% endif %}
+            <span class="drop-points" data-drop-points>{{ "%.2f"|format(drop['current_points']) }}</span>
+          </span>
         </div>
         <form method="POST" action="{{ url_for('kiosk_claim_drop_chore', drop_id=drop['id']) }}">
           <button type="submit" class="btn fh-btn-cyan fh-btn-lg w-100">
@@ -49,14 +59,5 @@
   </div>
 </div>
 
-<script>
-setInterval(function() {
-  fetch('/api/drop-chores').then(r => r.json()).then(drops => {
-    drops.forEach(d => {
-      const el = document.querySelector('.drop-points[data-id="' + d.id + '"]');
-      if (el) el.textContent = parseFloat(d.current_points).toFixed(2);
-    });
-  }).catch(() => {});
-}, 5000);
-</script>
+<script src="/static/js/drop-chores.js"></script>
 {% endblock %}

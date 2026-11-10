@@ -1,0 +1,237 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav, token %}
+{% block title %}Reports - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='reports') }}
+<div class="fh-page">
+  <div class="fh-page-header">
+    <div>
+      <h2 class="fh-page-title"><i class="bi bi-graph-up-arrow"></i> Financial Reports</h2>
+      <p class="text-muted mb-0">Review every ledger movement and export clean CSV records.</p>
+    </div>
+    <a class="btn fh-btn-cyan" href="{{ url_for('reports_export', report=report_kind, child_id=selected_child or '', start=start_date, end=end_date) }}">
+      <i class="bi bi-download"></i> Export {{ report_labels[report_kind] }}
+    </a>
+  </div>
+
+  <div class="fh-card mb-4">
+    <div class="fh-card-header"><i class="bi bi-funnel-fill"></i> Filters</div>
+    <div class="fh-card-body">
+      <form method="GET" action="{{ url_for('reports_page') }}" class="row g-2 align-items-end">
+        <div class="col-12 col-md-3">
+          <label class="fh-label">Report</label>
+          <select name="report" class="form-select fh-input">
+            {% for kind in report_kinds %}
+            <option value="{{ kind }}" {{ 'selected' if kind == report_kind else '' }}>{{ report_labels[kind] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="fh-label">Child</label>
+          <select name="child_id" class="form-select fh-input">
+            <option value="">All children</option>
+            {% for child in children %}
+            <option value="{{ child['id'] }}" {{ 'selected' if selected_child == child['id'] else '' }}>{{ child['name'] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="fh-label">From</label>
+          <input type="date" name="start" value="{{ start_date }}" class="form-control fh-input">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="fh-label">To</label>
+          <input type="date" name="end" value="{{ end_date }}" class="form-control fh-input">
+        </div>
+        <div class="col-12 col-md-2 d-flex gap-2">
+          <button class="btn fh-btn-cyan flex-fill" type="submit"><i class="bi bi-search"></i> Apply</button>
+          <a class="btn fh-btn-outline" href="{{ url_for('reports_page') }}" title="Clear filters"><i class="bi bi-x-lg"></i></a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="fh-card h-100"><div class="fh-card-body">
+        <div class="text-muted small">Income</div>
+        <div class="fs-4 fw-semibold text-success">{{ token(summary['income'], token_icon) }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="fh-card h-100"><div class="fh-card-body">
+        <div class="text-muted small">Expenses</div>
+        <div class="fs-4 fw-semibold text-danger">{{ token(summary['expenses'], token_icon) }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="fh-card h-100"><div class="fh-card-body">
+        <div class="text-muted small">Savings moved</div>
+        <div class="fs-4 fw-semibold">{{ token(summary['savings_in'] + summary['savings_out'], token_icon) }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="fh-card h-100"><div class="fh-card-body">
+        <div class="text-muted small">Net movement</div>
+        <div class="fs-4 fw-semibold {{ 'text-success' if summary['net'] >= 0 else 'text-danger' }}">{{ token(summary['net'], token_icon) }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-xl-5">
+      <div class="fh-card h-100">
+        <div class="fh-card-header"><i class="bi bi-pie-chart-fill"></i> By Type</div>
+        <div class="fh-card-body">
+          {% if summary['by_type'] %}
+          <div class="table-responsive">
+            <table class="table fh-table fh-table-sm">
+              <thead><tr><th>Type</th><th class="text-end">Count</th><th class="text-end">Total</th></tr></thead>
+              <tbody>
+                {% for item in summary['by_type'] %}
+                <tr>
+                  <td>{{ item['label'] }}</td>
+                  <td class="text-end text-muted">{{ item['count'] }}</td>
+                  <td class="text-end">{{ token(item['total'], token_icon) }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="text-muted mb-0">No ledger entries in this range.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-7">
+      <div class="fh-card h-100">
+        <div class="fh-card-header"><i class="bi bi-people-fill"></i> By Child</div>
+        <div class="fh-card-body">
+          {% if summary['by_child'] %}
+          <div class="table-responsive">
+            <table class="table fh-table fh-table-sm">
+              <thead><tr><th>Child</th><th class="text-end">Income</th><th class="text-end">Expenses</th><th class="text-end">Net</th></tr></thead>
+              <tbody>
+                {% for item in summary['by_child'] %}
+                <tr>
+                  <td><span class="fw-semibold" style="color: {{ item['color'] }};">{{ item['name'] }}</span></td>
+                  <td class="text-end text-success">{{ token(item['income'], '') }}</td>
+                  <td class="text-end text-danger">{{ token(item['expenses'], '') }}</td>
+                  <td class="text-end">{{ token(item['net'], '') }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="text-muted mb-0">No child activity in this range.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fh-card">
+    <div class="fh-card-header">
+      <i class="bi bi-journal-text"></i> {{ report_labels[report_kind] }}
+      <span class="badge bg-secondary ms-2">{{ report_data|length if report_data is not mapping else summary['transaction_count'] }}</span>
+    </div>
+    <div class="fh-card-body">
+      <div class="table-responsive">
+        {% if report_kind == 'ledger' %}
+        <table class="table fh-table fh-table-sm">
+          <thead><tr><th>Date</th><th>Child</th><th>Type</th><th>Description</th><th class="text-end">Amount</th><th class="text-end">Balance</th></tr></thead>
+          <tbody>
+            {% for row in report_data %}
+            <tr>
+              <td class="small text-muted">{{ row['created_at']|localtime }}</td>
+              <td>{{ row['user_name'] }}</td>
+              <td><span class="badge bg-secondary">{{ row['type_label'] }}</span></td>
+              <td class="small">{{ row['description'] }}</td>
+              <td class="text-end {{ 'text-success' if row['amount'] >= 0 else 'text-danger' }}">{{ token(row['amount'], '') }}</td>
+              <td class="text-end text-muted">{{ token(row['running_balance'], '') }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-4">No ledger entries found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% elif report_kind == 'savings' %}
+        <table class="table fh-table fh-table-sm">
+          <thead><tr><th>Date</th><th>Child</th><th>Goal</th><th>Type</th><th>Description</th><th class="text-end">Amount</th><th class="text-end">Balance</th></tr></thead>
+          <tbody>
+            {% for row in report_data %}
+            <tr>
+              <td class="small text-muted">{{ row['created_at']|localtime }}</td>
+              <td>{{ row['user_name'] }}</td>
+              <td>{{ row['vault_name'] or '—' }}</td>
+              <td><span class="badge bg-secondary">{{ row['type']|replace('_', ' ')|title }}</span></td>
+              <td class="small">{{ row['description'] }}</td>
+              <td class="text-end {{ 'text-success' if row['amount'] >= 0 else 'text-danger' }}">{{ token(row['amount'], '') }}</td>
+              <td class="text-end text-muted">{{ token(row['balance_after'], '') }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-4">No savings transactions found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% elif report_kind == 'bills' %}
+        <table class="table fh-table fh-table-sm">
+          <thead><tr><th>Due</th><th>Child</th><th>Bill</th><th>Category</th><th>Status</th><th class="text-end">Amount</th><th class="text-end">Paid</th></tr></thead>
+          <tbody>
+            {% for row in report_data %}
+            <tr>
+              <td class="small text-muted">{{ row['due_date'] }}</td>
+              <td>{{ row['user_name'] }}</td>
+              <td>{{ row['name'] }}</td>
+              <td>{{ row['category']|title }}</td>
+              <td><span class="badge bg-{{ 'success' if row['status'] == 'paid' else ('danger' if row['status'] == 'overdue' else 'secondary') }}">{{ row['status']|title }}</span></td>
+              <td class="text-end">{{ token(row['amount'], '') }}</td>
+              <td class="text-end text-muted">{{ token(row['amount_paid'], '') }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-4">No bills found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% elif report_kind == 'marketplace' %}
+        <table class="table fh-table fh-table-sm">
+          <thead><tr><th>Requested</th><th>Child</th><th>Item</th><th>Category</th><th class="text-end">Qty</th><th class="text-end">Total</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for row in report_data %}
+            <tr>
+              <td class="small text-muted">{{ row['requested_at']|localtime }}</td>
+              <td>{{ row['user_name'] }}</td>
+              <td>{{ row['item_name'] }}</td>
+              <td>{{ row['item_category']|replace('_', ' ')|title }}</td>
+              <td class="text-end">{{ row['quantity'] }}</td>
+              <td class="text-end">{{ token(row['total_amount'], '') }}</td>
+              <td><span class="badge bg-secondary">{{ row['status']|title }}</span></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-4">No marketplace orders found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <table class="table fh-table fh-table-sm">
+          <thead><tr><th>Type</th><th class="text-end">Count</th><th class="text-end">Total</th></tr></thead>
+          <tbody>
+            {% for item in summary['by_type'] %}
+            <tr>
+              <td>{{ item['label'] }}</td>
+              <td class="text-end text-muted">{{ item['count'] }}</td>
+              <td class="text-end">{{ token(item['total'], '') }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="text-center text-muted py-4">No activity found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

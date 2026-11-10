@@ -3,7 +3,7 @@
 {% block title %}Edit Chore - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='chores') }}
-<div class="container-fluid px-3 px-lg-4 py-4" style="max-width:600px;">
+<div class="fh-page fh-page--form">
   <div class="mb-3">
     <a href="{{ url_for('manage_chores') }}" class="fh-link"><i class="bi bi-arrow-left"></i> Back to Chores</a>
   </div>
@@ -80,8 +80,8 @@
         <div class="mb-2 mt-3">
           <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" name="single_child_only" id="singleChildOnly" value="1" {{ 'checked' if chore['single_child_only'] else '' }}>
-            <label class="form-check-label fh-label mb-0" for="singleChildOnly">One child at a time</label>
-            <div class="text-muted small">When on, only one child can do this chore at once.</div>
+            <label class="form-check-label fh-label mb-0" for="singleChildOnly">Shared chore (one completion)</label>
+            <div class="text-muted small">When on, the first child to complete it finishes it for everyone assigned.</div>
           </div>
         </div>
         <div class="mb-2 mt-3">

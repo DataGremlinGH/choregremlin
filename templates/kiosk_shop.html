@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import token, marketplace_price %}
+{% block title %}Shop - {{ app_name }}{% endblock %}
+{% block body %}
+<div class="fh-kiosk-screen">
+  <div class="fh-kiosk-header">
+    <div class="d-flex align-items-center gap-3">
+      <div class="fh-kid-photo" style="width:48px;height:48px;border-color: {{ child['color'] }};">
+        {% if child['photo_path'] %}
+          <img src="/static/{{ child['photo_path'] }}" alt="{{ child['name'] }}">
+        {% else %}
+          <span class="fh-kid-initial" style="font-size:1.4rem;color: {{ child['color'] }};">{{ child['name'][0]|upper }}</span>
+        {% endif %}
+      </div>
+      <div>
+        <div class="fh-kiosk-name" style="color: {{ child['color'] }};">{{ child['name'] }}'s Shop</div>
+        <div class="fh-kiosk-balance">
+          <i class="bi bi-cash-coin"></i> Spendable: {{ token(balance, token_icon) }}
+          &middot; <i class="bi bi-cash-stack"></i> Cash: {{ currency_symbol }}{{ '%.2f'|format(cash_balance) }}
+        </div>
+      </div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
+      <a href="{{ url_for('kiosk_bank') }}" class="btn btn-sm fh-btn-cyan"><i class="bi bi-bank"></i> Bank</a>
+      <a href="{{ url_for('kiosk_rewards') }}" class="btn btn-sm fh-btn-success"><i class="bi bi-trophy-fill"></i> Rewards</a>
+      <a href="{{ url_for('child_chores') }}" class="btn btn-sm fh-btn-outline"><i class="bi bi-arrow-left"></i> Chores</a>
+    </div>
+  </div>
+
+  {% if active_orders %}
+  <h3 class="fh-section-title"><i class="bi bi-bag-check-fill"></i> My Orders</h3>
+  <div class="row g-3 mb-4">
+    {% for order in active_orders %}
+    <div class="col-12 col-lg-6">
+      <div class="fh-card h-100">
+        <div class="fh-card-body">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div>
+              <div class="fw-bold">{{ order['item_name'] }} <span class="text-muted">x{{ order['quantity'] }}</span></div>
+              <div class="small text-muted">{{ order['item_category']|replace('_', ' ')|title }} &middot; {{ order['requested_at']|localtime }}</div>
+            </div>
+            <span class="badge {{ 'bg-warning text-dark' if order['status'] == 'pending' else 'bg-success' }}">
+              {{ 'Waiting for approval' if order['status'] == 'pending' else 'Ready to collect' }}
+            </span>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-3">
+            <span class="fw-semibold">{{ marketplace_price(order['total_amount'], order['currency_type']) }}</span>
+            <div class="d-flex gap-2">
+              {% if order['status'] == 'pending' %}
+              <form method="POST" action="{{ url_for('kiosk_shop_cancel', order_id=order['id']) }}" onsubmit="return confirm('Cancel this order and get your money back?')">
+                <button type="submit" class="btn fh-btn-cancel btn-sm"><i class="bi bi-x-circle"></i> Cancel</button>
+              </form>
+              {% endif %}
+              <button type="button" class="btn fh-btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#orderQrModal{{ order['id'] }}">
+                <i class="bi bi-qr-code"></i> Show QR
+              </button>
+            </div>
+          </div>
+          <p class="small text-muted mt-2 mb-0">
+            {% if order['status'] == 'pending' %}
+            A parent needs to approve this order first.
+            {% else %}
+            Show this QR code to a parent so they can verify and hand it over.
+            {% endif %}
+          </p>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <h3 class="fh-section-title"><i class="bi bi-shop-window"></i> Available Rewards</h3>
+  {% if items %}
+  <div class="fh-shop-grid">
+    {% for item in items %}
+    {% set out_of_stock = item['stock_quantity'] is not none and item['stock_quantity'] <= 0 %}
+    {% set item_currency = item['currency_type'] or 'token' %}
+    {% set item_price = item['cash_price'] if item_currency == 'cash' else (item['token_price'] if item['token_price'] is not none else item['price']) %}
+    {% set item_balance = cash_balance if item_currency == 'cash' else balance %}
+    {% set too_expensive = item_price > item_balance %}
+    <div class="fh-shop-card {{ 'fh-shop-unavailable' if out_of_stock or too_expensive else '' }}">
+      <div class="fh-shop-icon" style="color: {{ item['color'] }}; border-color: {{ item['color'] }};">
+        <i class="bi {{ item['icon'] }}"></i>
+      </div>
+      <div class="fh-shop-name">{{ item['name'] }}</div>
+      <div class="fh-shop-description">{{ item['description'] or '' }}</div>
+      <div class="fh-shop-meta">
+        <span class="badge bg-info text-dark">{{ item['category']|replace('_', ' ')|title }}</span>
+        {% if item['stock_quantity'] is not none %}
+        <span class="badge {{ 'bg-warning text-dark' if out_of_stock else 'bg-secondary' }}">{{ item['stock_quantity'] }} left</span>
+        {% endif %}
+      </div>
+      <div class="fh-shop-price">{{ marketplace_price(item_price, item_currency) }}</div>
+      {% if out_of_stock %}
+      <button type="button" class="btn fh-btn-cancel w-100" disabled>Out of stock</button>
+      {% elif too_expensive %}
+      <button type="button" class="btn fh-btn-outline w-100" disabled>Save up more</button>
+      {% else %}
+      <form method="POST" action="{{ url_for('kiosk_shop_buy', item_id=item['id']) }}">
+        <input type="hidden" name="quantity" value="1">
+        <button type="submit" class="btn fh-btn-success w-100"><i class="bi bi-bag-plus"></i> Buy</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fh-card"><div class="fh-card-body text-center text-muted py-4">
+    <i class="bi bi-shop-window fs-1 d-block mb-2"></i>
+    <p class="mb-0">The shop is empty right now. Check back soon.</p>
+  </div></div>
+  {% endif %}
+
+  {% if history %}
+  <div class="fh-card mt-4">
+    <div class="fh-card-header"><i class="bi bi-clock-history"></i> Shop History</div>
+    <div class="fh-card-body">
+      <div class="table-responsive">
+        <table class="table fh-table">
+          <thead><tr><th>When</th><th>Item</th><th>Total</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for order in history %}
+            <tr>
+              <td class="text-muted">{{ order['requested_at']|localtime }}</td>
+              <td>{{ order['item_name'] }} <span class="text-muted">x{{ order['quantity'] }}</span></td>
+              <td>{{ marketplace_price(order['total_amount'], order['currency_type']) }}</td>
+              <td><span class="badge {{ 'bg-success' if order['status'] == 'fulfilled' else ('bg-danger' if order['status'] == 'rejected' else 'bg-secondary') }}">{{ order['status']|title }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% for order in active_orders %}
+<div class="modal fade" id="orderQrModal{{ order['id'] }}" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content fh-modal-content text-center">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title"><i class="bi bi-qr-code"></i> {{ order['item_name'] }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="fh-qr-container mx-auto mb-3">
+          <img src="{{ order['qr_data_uri'] }}" alt="Redemption QR code" class="fh-qr-img">
+        </div>
+        <div class="fw-bold">{{ order['item_name'] }} x{{ order['quantity'] }}</div>
+        <div class="small text-muted mb-2">{{ marketplace_price(order['total_amount'], order['currency_type']) }} &middot; Order #{{ order['id'] }}</div>
+        <div class="small text-muted">Ask a parent to scan this code and press Fulfill.</div>
+      </div>
+      <div class="modal-footer fh-modal-footer justify-content-center">
+        <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

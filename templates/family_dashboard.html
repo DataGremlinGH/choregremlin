@@ -3,7 +3,7 @@
 {% block title %}Family - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='family') }}
-<div class="container-fluid px-3 px-lg-4 py-4">
+<div class="fh-page">
 
   <!-- Family Header -->
   <div class="fh-family-header mb-4">
@@ -73,7 +73,7 @@
             <div class="fh-notice-item">
               <div class="fh-notice-title">{{ n['title'] }}</div>
               {% if n['body'] %}<div class="fh-notice-body">{{ n['body'] }}</div>{% endif %}
-              <div class="fh-notice-date text-muted">{{ n['created_at'][:16] }}</div>
+              <div class="fh-notice-date text-muted">{{ n['created_at']|localtime }}</div>
             </div>
             {% endfor %}
           </div>
@@ -123,13 +123,13 @@
       <div class="fh-activity-list">
         {% for a in recent_activity %}
         <div class="fh-activity-item">
-          <div class="fh-activity-dot" style="background: {{ a['user_color'] or '#00d9ff' }};"></div>
+          <div class="fh-activity-dot" style="background: {{ a['user_color'] or '#10b981' }};"></div>
           <div class="fh-activity-info">
             <span class="fh-activity-user">{{ a['user_name'] or 'System' }}</span>
             <span class="fh-activity-action">{{ a['action'].replace('_', ' ') }}</span>
             {% if a['detail'] %}<span class="fh-activity-detail text-muted">- {{ a['detail'] }}</span>{% endif %}
           </div>
-          <div class="fh-activity-time text-muted">{{ a['created_at'][:16] }}</div>
+          <div class="fh-activity-time text-muted">{{ a['created_at']|localtime }}</div>
         </div>
         {% endfor %}
       </div>
