@@ -33,7 +33,7 @@
           {% set freq_labels = {'daily': 'Daily', 'weekly': 'Weekly', 'monthly': 'Monthly', 'weekdays': 'Weekdays', 'weekends': 'Weekends', 'once': 'One-time', 'custom': 'Custom'} %}
           <span class="badge bg-secondary">{{ freq_labels.get(chore['repeat_frequency'], chore['repeat_frequency']) }}</span>
           {% if chore['single_child_only'] %}
-          <span class="badge bg-warning text-dark"><i class="bi bi-person-lock"></i> One at a time</span>
+          <span class="badge bg-warning text-dark"><i class="bi bi-people-fill"></i> Shared</span>
           {% endif %}
           {% if chore['requires_hard_chores'] %}
           <span class="badge bg-danger"><i class="bi bi-shield-exclamation"></i> Older child</span>
@@ -167,8 +167,8 @@
           <div class="mt-3">
             <div class="form-check form-switch">
               <input class="form-check-input" type="checkbox" name="single_child_only" id="singleChildOnly" value="1">
-              <label class="form-check-label fh-label mb-0" for="singleChildOnly">One child at a time</label>
-              <div class="text-muted small">When on, only one child can do this chore at once.</div>
+              <label class="form-check-label fh-label mb-0" for="singleChildOnly">Shared chore (one completion)</label>
+              <div class="text-muted small">When on, the first child to complete it finishes it for everyone assigned.</div>
             </div>
           </div>
           <div class="mt-3">

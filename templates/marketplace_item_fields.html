@@ -1,0 +1,58 @@
+{% set field_item = item if item is defined else none %}
+<div class="row g-3">
+  <div class="col-12 col-md-8">
+    <label class="form-label">Item name</label>
+    <input type="text" name="name" class="form-control" maxlength="120" required value="{{ field_item['name'] if field_item else '' }}">
+  </div>
+  <div class="col-12 col-md-4">
+    <label class="form-label">Category</label>
+    <select name="category" class="form-select">
+      <option value="item" {{ 'selected' if field_item and field_item['category'] == 'item' else '' }}>Item</option>
+      <option value="privilege" {{ 'selected' if field_item and field_item['category'] == 'privilege' else '' }}>Privilege</option>
+      <option value="screen_time" {{ 'selected' if field_item and field_item['category'] == 'screen_time' else '' }}>Screen time voucher</option>
+    </select>
+  </div>
+  <div class="col-12">
+    <label class="form-label">Description</label>
+    <textarea name="description" class="form-control" rows="2" maxlength="500">{{ field_item['description'] if field_item else '' }}</textarea>
+  </div>
+  <div class="col-12 col-md-4">
+    <label class="form-label">Pricing currency</label>
+    {% set selected_currency = field_item['currency_type'] if field_item else 'token' %}
+    <select name="currency_type" class="form-select">
+      <option value="token" {{ 'selected' if selected_currency == 'token' else '' }}>Earned chore tokens</option>
+      <option value="cash" {{ 'selected' if selected_currency == 'cash' else '' }}>Cash balance ({{ currency_symbol }})</option>
+    </select>
+  </div>
+  <div class="col-6 col-md-4">
+    <label class="form-label">Token price</label>
+    <input type="number" name="token_price" class="form-control" min="0.01" step="0.01" value="{% if field_item and field_item['token_price'] is not none %}{{ '%.2f'|format(field_item['token_price']) }}{% elif field_item and field_item['currency_type'] == 'token' %}{{ '%.2f'|format(field_item['price']) }}{% endif %}">
+  </div>
+  <div class="col-6 col-md-4">
+    <label class="form-label">Cash price ({{ currency_symbol }})</label>
+    <input type="number" name="cash_price" class="form-control" min="0.01" step="0.01" value="{{ '%.2f'|format(field_item['cash_price']) if field_item and field_item['cash_price'] is not none else '' }}">
+  </div>
+  <div class="col-6 col-md-4">
+    <label class="form-label">Stock</label>
+    <input type="number" name="stock_quantity" class="form-control" min="0" step="1" placeholder="Unlimited" value="{{ field_item['stock_quantity'] if field_item and field_item['stock_quantity'] is not none else '' }}">
+  </div>
+  <div class="col-6 col-md-4">
+    <label class="form-label">Sort order</label>
+    <input type="number" name="sort_order" class="form-control" step="1" value="{{ field_item['sort_order'] if field_item else 0 }}">
+  </div>
+  <div class="col-6 col-md-4">
+    <label class="form-label">Colour</label>
+    <input type="color" name="color" class="form-control form-control-color w-100" value="{{ field_item['color'] if field_item else '#10b981' }}">
+  </div>
+  <div class="col-12"><div class="form-text">The selected currency must have a price. You can optionally add both so children see the relevant price.</div></div>
+  <div class="col-12 col-md-6">
+    <label class="form-label">Bootstrap icon class</label>
+    <input type="text" name="icon" class="form-control" value="{{ field_item['icon'] if field_item else 'bi-bag-fill' }}" placeholder="bi-bag-fill">
+  </div>
+  <div class="col-12 col-md-6 d-flex align-items-end">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="requires_approval" id="requiresApproval{{ field_item['id'] if field_item else 'New' }}" {{ 'checked' if not field_item or field_item['requires_approval'] else '' }}>
+      <label class="form-check-label" for="requiresApproval{{ field_item['id'] if field_item else 'New' }}">Require parent approval before collection</label>
+    </div>
+  </div>
+</div>

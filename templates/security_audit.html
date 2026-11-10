@@ -1,0 +1,140 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav %}
+{% block title %}Security Audit & Vulnerabilities - {{ app_name }}{% endblock %}
+{% block body %}
+{% set compliance_items = compliance|default([], true) %}
+{% set compliance_totals = compliance_summary|default({'protected': 0, 'monitored': 0, 'vulnerable': 0, 'worst': 'protected'}, true) %}
+{{ nav(active='security') }}
+<div class="fh-page fh-page--narrow">
+  <div class="fh-page-header">
+    <div>
+      <h2 class="fh-page-title"><i class="bi bi-shield-check"></i> Security Audit &amp; Vulnerabilities</h2>
+      <p class="text-muted mb-0">A local, read-only review of the hub's current security posture.</p>
+    </div>
+    <a href="{{ url_for('security_page') }}" class="btn fh-btn-outline">
+      <i class="bi bi-arrow-left"></i> Security Settings
+    </a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="fh-card h-100"><div class="fh-card-body text-center">
+        <div class="fs-3 fw-semibold">{{ summary['score'] }}%</div>
+        <div class="text-muted small">Audit score</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="fh-card h-100"><div class="fh-card-body text-center">
+        <div class="fs-3 fw-semibold text-success">{{ summary['pass'] }}</div>
+        <div class="text-muted small">Passed</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="fh-card h-100"><div class="fh-card-body text-center">
+        <div class="fs-3 fw-semibold text-warning">{{ summary['warn'] }}</div>
+        <div class="text-muted small">Warnings</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="fh-card h-100"><div class="fh-card-body text-center">
+        <div class="fs-3 fw-semibold text-danger">{{ summary['fail'] }}</div>
+        <div class="text-muted small">Failures</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="fh-card mb-4">
+    <div class="fh-card-header">
+      <i class="bi bi-bug-fill"></i> Vulnerability Classes
+      <span class="badge bg-{{ 'success' if compliance_totals['worst'] == 'protected' else ('warning' if compliance_totals['worst'] == 'monitored' else 'danger') }} ms-2">
+        {{ compliance_totals['worst']|title }}
+      </span>
+    </div>
+    <div class="fh-card-body">
+      <div class="row g-3 mb-3">
+        {% for status, label, tone, icon in [
+          ('protected', 'Protected', 'success', 'bi-shield-fill-check'),
+          ('monitored', 'Monitored', 'warning', 'bi-eye-fill'),
+          ('vulnerable', 'Vulnerable', 'danger', 'bi-exclamation-octagon-fill')
+        ] %}
+        <div class="col-4">
+          <div class="fh-compliance-stat">
+            <i class="bi {{ icon }} text-{{ tone }}"></i>
+            <div class="fs-4 fw-semibold">{{ compliance_totals[status] }}</div>
+            <div class="small text-muted">{{ label }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Class</th>
+              <th>Status</th>
+              <th>Live verification</th>
+              <th>Defence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in compliance_items %}
+            <tr>
+              <td>
+                <div class="fw-semibold">{{ item['name'] }}</div>
+                <div class="small text-muted">{{ item['summary'] }}</div>
+              </td>
+              <td>
+                <span class="badge bg-{{ 'success' if item['status'] == 'protected' else ('warning' if item['status'] == 'monitored' else 'danger') }}">
+                  {{ item['status_label'] }}
+                </span>
+              </td>
+              <td>
+                <span class="badge {{ 'text-bg-success' if item['live'] else 'text-bg-secondary' }}">
+                  <i class="bi {{ 'bi-check2-circle' if item['live'] else 'bi-dash-circle' }}"></i>
+                  {{ item['live_label'] }}
+                </span>
+                <div class="small text-muted mt-1">{{ item['detail'] }}</div>
+                {% if item['remediation'] %}
+                <div class="small text-warning mt-1"><i class="bi bi-wrench-adjustable"></i> {{ item['remediation'] }}</div>
+                {% endif %}
+              </td>
+              <td class="small text-muted">{{ item['defense'] }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="fh-card">
+    <div class="fh-card-header">
+      <i class="bi bi-list-check"></i> Checks
+      <span class="badge bg-{{ 'success' if summary['worst'] == 'pass' else ('warning' if summary['worst'] == 'warn' else 'danger') }} ms-2">
+        {{ summary['worst']|title }}
+      </span>
+    </div>
+    <div class="fh-card-body">
+      <div class="d-flex flex-column gap-2">
+        {% for check in checks %}
+        <div class="fh-audit-row">
+          <div class="fh-audit-icon fh-audit-{{ check['status'] }}">
+            <i class="bi {{ 'bi-check-circle-fill' if check['status'] == 'pass' else ('bi-exclamation-triangle-fill' if check['status'] == 'warn' else 'bi-x-octagon-fill') }}"></i>
+          </div>
+          <div class="flex-fill">
+            <div class="fw-semibold">{{ check['title'] }}</div>
+            <div class="small text-muted">{{ check['detail'] }}</div>
+            {% if check['remediation'] %}
+            <div class="small text-warning mt-1"><i class="bi bi-wrench-adjustable"></i> {{ check['remediation'] }}</div>
+            {% endif %}
+          </div>
+          <span class="badge bg-{{ 'success' if check['status'] == 'pass' else ('warning' if check['status'] == 'warn' else 'danger') }} align-self-start">
+            {{ check['status']|title }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

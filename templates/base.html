@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en" data-bs-theme="{{ 'light' if brightness_mode|default('dark') == 'light' else 'dark' }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -43,7 +43,7 @@
   </style>
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
 </head>
-<body data-brightness="{{ brightness_mode|default('dark') }}">
+<body class="fh-menu-{{ menu_position|default('left')|replace('_', '-') }} fh-buttons-{{ button_theme|default('default') }}" data-brightness="{{ brightness_mode|default('dark') }}" data-menu-position="{{ menu_position|default('left') }}" data-button-theme="{{ button_theme|default('default') }}">
   {% if wallpaper %}
   <div class="fh-bg" style="background-image: url('/static/{{ wallpaper }}'); background-size: cover; background-position: center; opacity: 0.15;"></div>
   {% else %}
@@ -64,10 +64,34 @@
     {% endif %}
   {% endwith %}
 
+  {% if latest_broadcast %}
+  <div class="fh-broadcast-banner" data-broadcast-id="{{ latest_broadcast['id'] }}" role="status">
+    <div class="fh-broadcast-icon" style="--badge-color: {{ latest_broadcast['color'] }};">
+      <i class="bi {{ latest_broadcast['icon'] }}"></i>
+    </div>
+    <div class="fh-broadcast-copy">
+      <div class="fh-broadcast-title">{{ latest_broadcast['title'] }}</div>
+      {% if latest_broadcast['body'] %}
+      <div class="fh-broadcast-body">{{ latest_broadcast['body'] }}</div>
+      {% endif %}
+      <div class="fh-broadcast-meta">
+        <i class="bi bi-megaphone-fill"></i>
+        {{ latest_broadcast['kind']|title }}
+        {% if latest_broadcast['child_name'] %} &middot; {{ latest_broadcast['child_name'] }}{% endif %}
+        &middot; {{ latest_broadcast['created_at']|localtime }}
+      </div>
+    </div>
+    <button type="button" class="fh-broadcast-close" data-fh-broadcast-close aria-label="Dismiss broadcast">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </div>
+  {% endif %}
+
   {% block body %}{% endblock %}
 
   <script src="/static/js/bootstrap.bundle.min.js"></script>
   <script src="/static/js/family-hub.js"></script>
+  <script src="/static/js/live-alerts.js"></script>
   <script>
     (function () {
       const token = document.querySelector('meta[name="csrf-token"]').content;
@@ -81,6 +105,19 @@
           form.appendChild(input);
         }
       }, true);
+      const broadcast = document.querySelector('.fh-broadcast-banner');
+      if (broadcast) {
+        const key = 'fh-broadcast-dismissed-' + broadcast.dataset.broadcastId;
+        try {
+          if (localStorage.getItem(key)) broadcast.remove();
+        } catch (e) {}
+        broadcast.querySelectorAll('[data-fh-broadcast-close]').forEach((button) => {
+          button.addEventListener('click', () => {
+            try { localStorage.setItem(key, '1'); } catch (e) {}
+            broadcast.remove();
+          });
+        });
+      }
       const nativeFetch = window.fetch;
       window.fetch = function (input, init = {}) {
         const method = (init.method || 'GET').toUpperCase();

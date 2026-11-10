@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav %}
+{% block title %}Releases - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='releases') }}
+<div class="fh-page">
+  <div class="fh-page-header">
+    <div>
+      <h2 class="fh-page-title"><i class="bi bi-box-seam"></i> Releases</h2>
+      <p class="text-muted mb-0">Build a portable bundle and create the git tag that triggers the release workflow.</p>
+    </div>
+    <a href="{{ url_for('snapshots_page') }}" class="btn fh-btn-outline">
+      <i class="bi bi-clock-history"></i> Snapshots
+    </a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="fh-card h-100"><div class="fh-card-body">
+        <div class="text-muted small">Current version</div>
+        <div class="fs-2 fw-semibold">{{ current_version }}</div>
+        <div class="small text-muted">Bundles are stored in {{ release_dir }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-8">
+      <div class="fh-card h-100"><div class="fh-card-body">
+        <form method="post" action="{{ url_for('release_build') }}" class="row g-2 align-items-end">
+          <div class="col-sm-5">
+            <label class="form-label" for="build-version">Bundle version</label>
+            <input class="form-control" id="build-version" name="version" value="{{ current_version }}" required>
+          </div>
+          <div class="col-sm-auto">
+            <button class="btn fh-btn-cyan" type="submit"><i class="bi bi-box-seam"></i> Build Bundle</button>
+          </div>
+          <div class="col-12">
+            <div class="d-flex gap-2 flex-wrap small">
+              <span class="text-muted">Suggested:</span>
+              <button type="button" class="btn btn-sm fh-btn-outline" data-fill-version="{{ suggested['patch'] }}">patch {{ suggested['patch'] }}</button>
+              <button type="button" class="btn btn-sm fh-btn-outline" data-fill-version="{{ suggested['minor'] }}">minor {{ suggested['minor'] }}</button>
+              <button type="button" class="btn btn-sm fh-btn-outline" data-fill-version="{{ suggested['major'] }}">major {{ suggested['major'] }}</button>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="build-notes">Release notes (optional)</label>
+            <input class="form-control" id="build-notes" name="notes" placeholder="Short summary for RELEASE_INFO.json">
+          </div>
+        </form>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-5">
+      <div class="fh-card h-100"><div class="fh-card-header"><i class="bi bi-tag-fill"></i> Create git tag</div>
+        <div class="fh-card-body">
+          <p class="small text-muted">Creates an annotated <code>v{{ current_version }}</code> tag locally. Push the tag to run <code>release.yml</code>.</p>
+          <form method="post" action="{{ url_for('release_tag') }}" class="d-flex gap-2 flex-wrap">
+            <input class="form-control" style="max-width: 10rem;" name="version" value="{{ current_version }}" required>
+            <input class="form-control" style="max-width: 16rem;" name="message" placeholder="Tag message">
+            <button class="btn fh-btn-outline" type="submit"><i class="bi bi-tag"></i> Tag</button>
+          </form>
+          {% if last_message %}
+          <div class="small mt-3 text-muted"><span class="fw-semibold">Last result:</span> {{ last_status }} - {{ last_message }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-7">
+      <div class="fh-card h-100"><div class="fh-card-header"><i class="bi bi-journal-text"></i> Changelog preview</div>
+        <div class="fh-card-body"><pre class="small mb-0" style="max-height: 12rem; overflow: auto; white-space: pre-wrap;">{{ changelog }}</pre></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fh-card">
+    <div class="fh-card-header"><i class="bi bi-archive-fill"></i> Built bundles</div>
+    <div class="fh-card-body">
+      {% if bundles %}
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead><tr><th>Bundle</th><th>Size</th><th>Built</th><th>SHA-256</th><th></th></tr></thead>
+          <tbody>
+          {% for bundle in bundles %}
+            <tr>
+              <td class="fw-semibold">{{ bundle['filename'] }}</td>
+              <td>{{ bundle['size_human'] }}</td>
+              <td class="small text-muted">{{ bundle['created_at'] }}</td>
+              <td class="small"><code>{{ bundle['checksum'][:16] }}...</code></td>
+              <td class="text-end"><a class="btn btn-sm fh-btn-outline" href="{{ url_for('release_download', filename=bundle['filename']) }}"><i class="bi bi-download"></i> Download</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">No bundles have been built yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('[data-fill-version]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      document.getElementById('build-version').value = button.dataset.fillVersion;
+    });
+  });
+</script>
+{% endblock %}

@@ -8,16 +8,21 @@
   var pin = '';
 
   function updateDots() {
-    dots.forEach(function (dot, i) {
-      if (i < pin.length) dot.classList.add('fh-pin-dot-filled');
-      else dot.classList.remove('fh-pin-dot-filled');
-    });
+    if (!display) return;
+    var shown = Math.min(Math.max(pin.length, 4), 12);
+    display.innerHTML = '';
+    for (var i = 0; i < shown; i++) {
+      var dot = document.createElement('span');
+      dot.className = 'fh-pin-dot' + (i < pin.length ? ' fh-pin-dot-filled' : '');
+      display.appendChild(dot);
+    }
   }
 
   function submit() {
     if (pin.length < 1) return;
     input.value = pin;
-    form.submit();
+    if (typeof form.requestSubmit === 'function') form.requestSubmit();
+    else form.submit();
   }
 
   keys.forEach(function (key) {
@@ -27,7 +32,7 @@
         pin = '';
       } else if (k === 'go') {
         submit();
-      } else if (pin.length < 6) {
+      } else if (pin.length < 64) {
         pin += k;
       }
       updateDots();

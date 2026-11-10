@@ -166,8 +166,8 @@
   <div class="d-flex gap-2 flex-wrap">
     {% for choice in field.choices %}
     <div class="form-check">
-      <input class="form-check-input" type="radio" name="{{ field.key }}" id="bm-{{ choice.value }}" value="{{ choice.value }}" {{ 'checked' if value == choice.value else '' }}>
-      <label class="form-check-label fh-check-label" for="bm-{{ choice.value }}">
+      <input class="form-check-input" type="radio" name="{{ field.key }}" id="{{ field.key }}-{{ choice.value }}" value="{{ choice.value }}" {{ 'checked' if value == choice.value else '' }}>
+      <label class="form-check-label fh-check-label" for="{{ field.key }}-{{ choice.value }}">
         <i class="bi {{ choice.icon }}"></i> {{ choice.label }}
       </label>
     </div>
@@ -189,5 +189,9 @@
 {% endmacro %}
 
 {% macro token(amount, icon, convert_value=None, symbol='') %}
-<span class="fh-token">{{ icon|safe }} {{ "%.2f"|format(amount) }}{% if convert_value is not none %} <span class="fh-token-gbp">({{ symbol }}{{ "%.2f"|format(convert_value) }})</span>{% endif %}</span>
+<span class="fh-token">{{ icon }} {{ "%.2f"|format(amount) }}{% if convert_value is not none %} <span class="fh-token-gbp">({{ symbol }}{{ "%.2f"|format(convert_value) }})</span>{% endif %}</span>
+{% endmacro %}
+
+{% macro marketplace_price(amount, currency_type='token') %}
+{% if currency_type == 'cash' %}<span class="fh-token"><i class="bi bi-cash-stack"></i> {{ currency_symbol }}{{ "%.2f"|format(amount) }}</span>{% else %}{{ token(amount, token_icon) }}{% endif %}
 {% endmacro %}

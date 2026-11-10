@@ -75,7 +75,7 @@
           {% set stat_items = [
             ('earned', 'Total Earned', 'bi-cash-stack'),
             ('chores', 'Chores Completed', 'bi-check2-circle'),
-            ('progress', 'In Progress Now', 'bi-hourglass-split')
+            ('progress', 'Pending Approval', 'bi-clipboard-check')
           ] %}
           {% for key, label, default_icon in stat_items %}
           {% set current = stat_icons.get(key, '') %}

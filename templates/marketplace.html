@@ -1,0 +1,288 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav, token, marketplace_price %}
+{% block title %}Marketplace - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='marketplace') }}
+<div class="fh-page">
+  <div class="fh-page-header">
+    <h2 class="fh-page-title"><i class="bi bi-shop"></i> Chore Gremlin Marketplace</h2>
+    <div class="d-flex gap-2 flex-wrap">
+      <button type="button" class="btn fh-btn-outline" data-bs-toggle="modal" data-bs-target="#verifyOrderModal">
+        <i class="bi bi-qr-code-scan"></i> Verify Redemption
+      </button>
+      <button type="button" class="btn fh-btn-cyan" data-bs-toggle="modal" data-bs-target="#addItemModal">
+        <i class="bi bi-plus-circle-fill"></i> Add Item
+      </button>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="fh-card h-100"><div class="fh-card-body">
+        <div class="small text-muted">Catalog items</div>
+        <div class="fs-3 fw-bold">{{ items|length }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="fh-card h-100"><div class="fh-card-body">
+        <div class="small text-muted">Awaiting approval</div>
+        <div class="fs-3 fw-bold text-warning">{{ pending_orders|length }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="fh-card h-100"><div class="fh-card-body">
+        <div class="small text-muted">Ready to fulfill</div>
+        <div class="fs-3 fw-bold text-success">{{ approved_orders|length }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="fh-card h-100"><div class="fh-card-body">
+        <div class="small text-muted">Completed history</div>
+        <div class="fs-3 fw-bold">{{ history|length }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="fh-card mb-4">
+    <div class="fh-card-header"><i class="bi bi-cash-stack"></i> Cash Balances</div>
+    <div class="fh-card-body">
+      {% if children %}
+      <div class="row g-3">
+        {% for child in children %}
+        <div class="col-12 col-lg-6">
+          <div class="border rounded p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+              <div class="fw-semibold">{{ child['name'] }}</div>
+              <span class="badge bg-success">{{ currency_symbol }}{{ '%.2f'|format(cash_balances[child['id']]) }}</span>
+            </div>
+            <form method="POST" action="{{ url_for('marketplace_cash_adjust', child_id=child['id']) }}" class="input-group input-group-sm">
+              <input type="number" name="amount" class="form-control" min="0.01" step="0.01" placeholder="Amount" required>
+              <input type="text" name="description" class="form-control" maxlength="120" placeholder="Note (optional)">
+              <button type="submit" name="direction" value="add" class="btn fh-btn-success">Add</button>
+              <button type="submit" name="direction" value="remove" class="btn fh-btn-cancel">Remove</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">Add a child to manage cash balances.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <h3 class="fh-section-title"><i class="bi bi-box-seam-fill"></i> Inventory</h3>
+  {% if items %}
+  <div class="row g-3 mb-4">
+    {% for item in items %}
+    <div class="col-12 col-md-6 col-xl-4">
+      <div class="fh-card h-100 {{ 'opacity-50' if not item['is_active'] else '' }}">
+        <div class="fh-card-body">
+          <div class="d-flex align-items-start gap-3">
+            <div class="fh-shop-icon" style="color: {{ item['color'] }}; border-color: {{ item['color'] }};">
+              <i class="bi {{ item['icon'] }}"></i>
+            </div>
+            <div class="flex-fill">
+              <div class="d-flex justify-content-between gap-2">
+                <div class="fw-bold">{{ item['name'] }}</div>
+                <span class="badge {{ 'bg-success' if item['is_active'] else 'bg-secondary' }}">{{ 'Active' if item['is_active'] else 'Hidden' }}</span>
+              </div>
+              <div class="small text-muted">{{ item['description'] or 'No description' }}</div>
+              <div class="d-flex gap-1 flex-wrap mt-2">
+                <span class="badge bg-info text-dark">{{ item['category']|replace('_', ' ')|title }}</span>
+                <span class="badge bg-dark border border-secondary">{{ marketplace_price(item['price'], item['currency_type']) }}</span>
+                <span class="badge {{ 'bg-warning text-dark' if item['stock_quantity'] is not none and item['stock_quantity'] == 0 else 'bg-secondary' }}">
+                  {% if item['stock_quantity'] is none %}Unlimited{% else %}{{ item['stock_quantity'] }} in stock{% endif %}
+                </span>
+                {% if item['requires_approval'] %}<span class="badge bg-secondary">Needs approval</span>{% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-3">
+            <button type="button" class="btn fh-btn-outline btn-sm flex-fill" data-bs-toggle="modal" data-bs-target="#editItemModal{{ item['id'] }}">
+              <i class="bi bi-pencil"></i> Edit
+            </button>
+            <form method="POST" action="{{ url_for('marketplace_item_toggle', item_id=item['id']) }}" class="flex-fill">
+              <button type="submit" class="btn btn-sm w-100 {{ 'fh-btn-cancel' if item['is_active'] else 'fh-btn-success' }}">
+                <i class="bi {{ 'bi-eye-slash' if item['is_active'] else 'bi-eye' }}"></i> {{ 'Hide' if item['is_active'] else 'Show' }}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fh-card mb-4"><div class="fh-card-body text-center text-muted py-4">
+    <i class="bi bi-shop-window fs-1 d-block mb-2"></i>
+    <p class="mb-0">No marketplace items yet. Add the first reward or privilege.</p>
+  </div></div>
+  {% endif %}
+
+  <div class="fh-card mb-4">
+    <div class="fh-card-header"><i class="bi bi-hourglass-split"></i> Pending Orders</div>
+    <div class="fh-card-body">
+      {% if pending_orders %}
+      <div class="row g-3">
+        {% for order in pending_orders %}
+        <div class="col-12 col-lg-6">
+          <div class="border rounded p-3 h-100">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div>
+                <div class="fw-bold">{{ order['item_name'] }} <span class="text-muted">x{{ order['quantity'] }}</span></div>
+                <div class="small text-muted">{{ order['user_name'] }} &middot; {{ order['requested_at']|localtime }}</div>
+              </div>
+              <span class="badge bg-warning text-dark">{{ marketplace_price(order['total_amount'], order['currency_type']) }}</span>
+            </div>
+            {% if order['notes'] %}<div class="small text-muted mt-2">{{ order['notes'] }}</div>{% endif %}
+            <div class="d-flex gap-2 mt-3">
+              <form method="POST" action="{{ url_for('marketplace_order_approve', order_id=order['id']) }}" class="flex-fill">
+                <button type="submit" class="btn fh-btn-success btn-sm w-100"><i class="bi bi-check-lg"></i> Approve</button>
+              </form>
+              <a href="{{ url_for('marketplace_verify', token=order['qr_token']) }}" class="btn fh-btn-outline btn-sm" target="_blank" rel="noopener">
+                <i class="bi bi-qr-code"></i> QR
+              </a>
+            </div>
+            <form method="POST" action="{{ url_for('marketplace_order_reject', order_id=order['id']) }}" class="input-group input-group-sm mt-2">
+              <input type="text" name="reason" class="form-control" placeholder="Reason (optional)">
+              <button type="submit" class="btn fh-btn-cancel">Reject</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-muted text-center mb-0">No pending orders.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="fh-card mb-4">
+    <div class="fh-card-header"><i class="bi bi-bag-check-fill"></i> Ready to Fulfill</div>
+    <div class="fh-card-body">
+      {% if approved_orders %}
+      <div class="row g-3">
+        {% for order in approved_orders %}
+        <div class="col-12 col-lg-6">
+          <div class="border rounded p-3 h-100">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div>
+                <div class="fw-bold">{{ order['item_name'] }} <span class="text-muted">x{{ order['quantity'] }}</span></div>
+                <div class="small text-muted">{{ order['user_name'] }} &middot; approved {{ order['approved_at']|localtime }}</div>
+              </div>
+              <span class="badge bg-success">{{ marketplace_price(order['total_amount'], order['currency_type']) }}</span>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+              <form method="POST" action="{{ url_for('marketplace_order_fulfill', order_id=order['id']) }}" class="flex-fill">
+                <button type="submit" class="btn fh-btn-success btn-sm w-100"><i class="bi bi-bag-check"></i> Fulfill</button>
+              </form>
+              <a href="{{ url_for('marketplace_verify', token=order['qr_token']) }}" class="btn fh-btn-outline btn-sm">
+                <i class="bi bi-qr-code-scan"></i> Verify
+              </a>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-muted text-center mb-0">No approved orders waiting for collection.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="fh-card">
+    <div class="fh-card-header"><i class="bi bi-clock-history"></i> Marketplace History</div>
+    <div class="fh-card-body">
+      {% if history %}
+      <div class="table-responsive">
+        <table class="table fh-table">
+          <thead><tr><th>When</th><th>Child</th><th>Item</th><th>Total</th><th>Status</th><th>Handled by</th></tr></thead>
+          <tbody>
+            {% for order in history %}
+            <tr>
+              <td class="text-muted">{{ order['requested_at']|localtime }}</td>
+              <td>{{ order['user_name'] }}</td>
+              <td>{{ order['item_name'] }} <span class="text-muted">x{{ order['quantity'] }}</span></td>
+              <td>{{ marketplace_price(order['total_amount'], order['currency_type']) }}</td>
+              <td>
+                <span class="badge {{ 'bg-success' if order['status'] == 'fulfilled' else ('bg-danger' if order['status'] == 'rejected' else 'bg-secondary') }}">{{ order['status']|title }}</span>
+                {% if order['rejection_reason'] %}<div class="small text-muted">{{ order['rejection_reason'] }}</div>{% endif %}
+              </td>
+              <td class="text-muted">{{ order['fulfiller_name'] or order['approver_name'] or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted text-center mb-0">No completed marketplace orders yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="addItemModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title"><i class="bi bi-plus-circle-fill"></i> Add Marketplace Item</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('marketplace_item_add') }}">
+        <div class="modal-body">
+          {% include 'marketplace_item_fields.html' %}
+        </div>
+        <div class="modal-footer fh-modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-check-lg"></i> Add Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% for item in items %}
+<div class="modal fade" id="editItemModal{{ item['id'] }}" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil"></i> Edit {{ item['name'] }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('marketplace_item_update', item_id=item['id']) }}">
+        <div class="modal-body">
+          {% include 'marketplace_item_fields.html' %}
+        </div>
+        <div class="modal-footer fh-modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-check-lg"></i> Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<div class="modal fade" id="verifyOrderModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title"><i class="bi bi-qr-code-scan"></i> Verify Redemption</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('marketplace_verify') }}">
+        <div class="modal-body">
+          <p class="text-muted small">Scan the child's QR code, or paste the redemption code here.</p>
+          <label class="form-label">Redemption code</label>
+          <input type="text" name="token" class="form-control" placeholder="Paste code or scan QR" required autofocus>
+        </div>
+        <div class="modal-footer fh-modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-search"></i> Verify</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

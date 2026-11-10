@@ -23,7 +23,7 @@
       <div class="table-responsive">
         <table class="table fh-table">
           <thead>
-            <tr><th>Kid</th><th>Chore</th><th>Started</th><th>Finished</th><th>Earned</th></tr>
+            <tr><th>Kid</th><th>Chore</th><th>Completed</th><th>Earned</th></tr>
           </thead>
           <tbody>
             {% for log in logs %}
@@ -37,7 +37,6 @@
                 </div>
               </td>
               <td><i class="bi {{ log['chore_icon'] }} me-1"></i>{{ log['chore_name'] }}</td>
-              <td class="text-muted">{{ log['started_at']|localtime }}</td>
               <td class="text-muted">{{ log['finished_at']|localtime if log['finished_at'] else '—' }}</td>
               <td class="text-warning fw-bold">{{ token(log['earned_amount'], token_icon) }}</td>
             </tr>

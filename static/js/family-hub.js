@@ -52,4 +52,23 @@ document.addEventListener('DOMContentLoaded', () => {
   desktop.addEventListener('change', (event) => {
     if (event.matches) setOpen(false);
   });
+
+  const sidebar = document.querySelector('.fh-sidebar');
+  if (sidebar) {
+    const storageKey = 'fh-sidebar-scroll';
+    try {
+      const saved = parseInt(localStorage.getItem(storageKey), 10);
+      if (!Number.isNaN(saved)) sidebar.scrollTop = saved;
+    } catch (err) {}
+    let scrollFrame = null;
+    sidebar.addEventListener('scroll', () => {
+      if (scrollFrame) return;
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = null;
+        try {
+          localStorage.setItem(storageKey, String(sidebar.scrollTop));
+        } catch (err) {}
+      });
+    }, { passive: true });
+  }
 });

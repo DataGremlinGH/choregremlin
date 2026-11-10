@@ -8,24 +8,27 @@ A self-hosted family chore and allowance tracker for Raspberry Pi. Runs entirely
 
 ## What it does
 
-- **Kids** tap their photo to log in, pick a chore, start a timer, and tap "Done" when finished
+- **Kids** tap their photo to log in, pick an assigned chore, and tap "Complete" when finished
 - **Parents** approve or reject completed chores, record payments, and see who earned what
 - **Admins** manage everything: users, settings, storage, network, security, backups
 
 ## Features
 
-- **Kiosk Mode** — Touch-friendly interface with large buttons. Kids tap their face photo to log in. Optional 4-6 digit PIN.
+- **Kiosk Mode** — Touch-friendly interface with large buttons. Kids tap their face photo to log in. Optional flexible-length numeric PIN.
 - **Child Profiles** — First name, surname, nickname, date of birth, theme colour, profile photo, and status (active, holiday, sick, grounded, excused, custom).
 - **Chore Approval** — Parents approve or reject completed chores before payment is recorded.
+- **Direct Chore Completion** — Assigned chores have a single Complete button with no timers or start/finish steps.
+- **Shared or Individual Chores** — Shared chores disappear after the first completion; each child's individual copy disappears when that child completes it.
+- **Achievements** — Earn badges for chore milestones, night and weekend streaks, all-day efforts, pet cleanings, holidays and birthdays, with progress galleries for parents and kids.
 - **Custom Reward Token** — Call your currency whatever you want (Widgets, Stars, Galleons). Set its value in your chosen currency. Upload a logo or pick an emoji.
 - **Family Dashboard** — Family logo, current date, notices, recent activity, upcoming events, and children status overview.
 - **Payment Tracking** — Record payouts, bonuses, and adjustments. See running balances per child.
 - **Family Notices** — Post announcements with optional expiry dates.
 - **Calendar Events** — Schedule family events with date, time, and description. Kids can view and add events from the kiosk.
-- **Drop Chores** — Post time-sensitive bonus chores with a point value that decays over time. Kids race to claim them before the points drop or the chore expires. Great for getting extra jobs done fast.
+- **Drop Chores** — Post time-sensitive bonus chores with a live countdown and a point value that decays every minute. Kids race to claim them before the points drop; expired unclaimed drops are randomly assigned to an active child, appear on their dashboard with a Complete button, and remain pending parent approval. Great for getting extra jobs done fast.
 - **Storage Management** — Move all data to a USB drive or network share. Detect available drives, verify copy, one-click rollback.
 - **Network Settings** — Configurable port (default 8473), QR code for easy device connection, `familyhub.local` via Avahi.
-- **Security** — Role guards on every page, mandatory 2FA for administrators, TOTP two-factor authentication, single-use backup codes, remote access toggle (LAN-only by default), login rate limiting, lockout, login audit log, secure cookies.
+- **Security** — Role guards on every page, mandatory 2FA for administrators, TOTP two-factor authentication, single-use backup codes, remote access toggle (LAN-only by default), login rate limiting, lockout, login audit log, secure cookies, and a Security & Vulnerabilities dashboard with live checks for SQL injection, CSRF, XSS, authentication, sessions and configuration.
 - **Local HTTPS** — Optional Caddy reverse proxy with a private local certificate and an in-app Trust Page for installing the certificate on your devices.
 - **Backup & Restore** — Download and restore the full database from the admin panel.
 - **Auto-Update** — Checks for updates hourly, backs up the database first and can be switched off in settings.
@@ -75,7 +78,7 @@ Then open `http://<pi-ip-address>:8473` in your browser.
 |------|-----------------|
 | **Administrator** | Full control: manage kids, chores, payments, users, settings, storage, network, security, backup, system. Reset passwords and PINs. |
 | **Parent** | View kids, chores, payments, history. Approve/reject chores. Add notices and events. Cannot access system settings. |
-| **Child** | Kiosk only: tap photo, enter PIN (if set), start/finish chores. Large touch-friendly buttons. |
+| **Child** | Kiosk only: tap photo, enter PIN (if set), complete chores. Large touch-friendly buttons. |
 
 ## Supported Devices
 

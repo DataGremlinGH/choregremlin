@@ -7,11 +7,14 @@ A self-hosted family chore & allowance tracker for Raspberry Pi.
 import os
 import io
 import json
+import re
 import socket
 import sqlite3
 import secrets
 import hashlib
 import base64
+import ipaddress
+import queue
 import time
 from datetime import datetime
 from functools import wraps
@@ -19,13 +22,23 @@ from urllib.parse import urlparse, quote
 
 from flask import (
     Flask, render_template, request, redirect, url_for, session,
-    jsonify, send_from_directory, send_file, g, flash, abort, make_response
+    jsonify, send_from_directory, send_file, g, flash, abort, make_response,
+    has_request_context, Response, stream_with_context,
 )
 from flask_wtf.csrf import CSRFProtect, CSRFError
+from markupsafe import Markup, escape as markup_escape
 
 import db as db_module
 from uploads import save_image, UploadError
 import clock
+import gamification
+import achievements
+import reporting
+import events
+import updater
+import security_audit
+import release
+from hardware import HardwareManager
 from registry import CURRENCIES, NAV_ITEMS, SETTINGS
 
 app = Flask(__name__, instance_relative_config=True)
@@ -54,18 +67,79 @@ app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024  # 8MB
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('CHOREGREMLIN_HTTPS') == '1'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-CSRFProtect(app)
+csrf = CSRFProtect(app)
 CURRENCY_BY_CODE = {item['code']: item for item in CURRENCIES}
 
 app.jinja_env.globals['NAV_ITEMS'] = NAV_ITEMS
 app.jinja_env.filters['localtime'] = clock.format_local
 
 DEFAULT_PORT = 8473
+APP_DIR = os.path.abspath(os.path.dirname(__file__))
+RELEASE_DIR = os.path.join(db_module.DATA_DIR, 'releases')
 
 app.teardown_appcontext(db_module.close_db)
 
 # Initialize database on import
 db_module.init_db()
+
+_hardware_manager = None
+LOCAL_HARDWARE_ADDRESSES = {None, '127.0.0.1', '::1', '::ffff:127.0.0.1'}
+
+
+def get_hardware():
+    global _hardware_manager
+    if _hardware_manager is None:
+        _hardware_manager = HardwareManager()
+        _hardware_manager.on_rfid(_hardware_rfid_callback)
+    return _hardware_manager
+
+
+def set_hardware_manager(manager):
+    global _hardware_manager
+    if _hardware_manager is not None and _hardware_manager is not manager:
+        _hardware_manager.stop()
+    _hardware_manager = manager
+
+
+def hardware_beep(pattern):
+    try:
+        return get_hardware().beep(pattern)
+    except Exception:
+        app.logger.exception('Hardware buzzer failed')
+        return False
+
+
+def _rfid_request_authorized():
+    token = os.environ.get('CHOREGREMLIN_HARDWARE_TOKEN')
+    if not token:
+        return request.remote_addr in LOCAL_HARDWARE_ADDRESSES
+    supplied = request.headers.get('X-Hardware-Token') or request.form.get('hardware_token', '')
+    return secrets.compare_digest(str(supplied), token)
+
+
+def process_rfid_scan(tag_uid):
+    tag = db_module.get_rfid_tag(tag_uid)
+    if not tag:
+        return {'status': 'error', 'message': 'Unknown or inactive RFID tag'}, 404
+    child = db_module.get_user(tag['user_id'])
+    if not child or child['role'] != 'child' or not child['is_active']:
+        return {'status': 'error', 'message': 'RFID tag is assigned to an unavailable child'}, 403
+    return {'status': 'selected', 'child_id': child['id']}, 200
+
+
+def _hardware_rfid_callback(tag_uid):
+    try:
+        with app.app_context():
+            result, _ = process_rfid_scan(tag_uid)
+            app.logger.info('Hardware RFID scan: %s', result)
+            if result['status'] == 'completed':
+                hardware_beep('success')
+            elif result['status'] == 'selected':
+                hardware_beep('start')
+            else:
+                hardware_beep('error')
+    except Exception:
+        app.logger.exception('Hardware RFID scan failed')
 
 
 def _safe_referrer(fallback_endpoint):
@@ -74,6 +148,53 @@ def _safe_referrer(fallback_endpoint):
     if referrer and urlparse(referrer).netloc == request.host:
         return referrer
     return url_for(fallback_endpoint)
+
+
+def _normalise_ip(value):
+    """Return a bounded, valid IP address string or None."""
+    text = str(value or '').strip()
+    if not text or len(text) > 45:
+        return None
+    try:
+        return str(ipaddress.ip_address(text))
+    except ValueError:
+        return None
+
+
+def _clear_auth_session():
+    """Drop kiosk/staff auth state without discarding the CSRF token."""
+    csrf_token = session.get('csrf_token')
+    session.clear()
+    if csrf_token:
+        session['csrf_token'] = csrf_token
+
+
+def client_ip():
+    """Return the client address without trusting spoofable proxy headers by default."""
+    remote = _normalise_ip(request.remote_addr) or 'unknown'
+    trust_proxy = os.environ.get('CHOREGREMLIN_TRUST_PROXY', '').strip().lower()
+    if trust_proxy not in ('1', 'true', 'yes', 'on'):
+        return remote
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    candidate = forwarded.split(',', 1)[0].strip()
+    return _normalise_ip(candidate) or remote
+
+
+def token_icon_for(currency):
+    """Build a safe token icon; uploaded paths and emoji are untrusted settings."""
+    currency = currency or {}
+    if currency.get('token_logo_type') == 'upload' and currency.get('token_logo'):
+        path = str(currency.get('token_logo') or '').strip().replace('\\', '/')
+        parts = path.split('/')
+        if (path.startswith('uploads/') and '..' not in parts and
+                re.fullmatch(r'[A-Za-z0-9._/-]+', path)):
+            src = '/static/' + quote(path, safe='/')
+            return Markup(
+                f'<img src="{src}" alt="" '
+                'style="width:16px;height:16px;vertical-align:middle;">'
+            )
+        return Markup('')
+    return markup_escape(str(currency.get('token_emoji') or ''))
 
 
 @app.errorhandler(UploadError)
@@ -165,19 +286,50 @@ def chore_icon_file(filename):
     return send_from_directory(CHORE_ICON_DIR, filename)
 
 
-def fmt_duration(started, finished=None):
-    try:
-        s = datetime.fromisoformat(started.replace('Z', '+00:00')) if isinstance(started, str) else started
-        if finished:
-            f = datetime.fromisoformat(finished.replace('Z', '+00:00')) if isinstance(finished, str) else finished
-        else:
-            f = datetime.now()
-        delta = f - s
-        mins = int(delta.total_seconds() // 60)
-        secs = int(delta.total_seconds() % 60)
-        return f"{mins}m {secs}s"
-    except Exception:
-        return "—"
+def gamification_view(child_id):
+    stats = db_module.get_gamification(child_id)
+    if not stats:
+        stats = {
+            'total_xp': 0, 'level': 1, 'current_streak': 0,
+            'longest_streak': 0, 'equipped_avatar': 'default',
+            'equipped_badge': '', 'last_completed_date': None,
+        }
+    progress = gamification.level_progress(stats['total_xp'])
+    unlocked_items = db_module.get_unlocked_items(child_id)
+    unlocked_avatars = {
+        row['item_key'] for row in unlocked_items if row['item_type'] == 'avatar'
+    }
+    unlocked_badges = {
+        row['item_key'] for row in unlocked_items if row['item_type'] == 'badge'
+    }
+    avatars = gamification.catalog_with_status(
+        'avatar', level=stats['level'], total_xp=stats['total_xp'],
+        longest_streak=stats['longest_streak'], current_streak=stats['current_streak']
+    )
+    badges = gamification.catalog_with_status(
+        'badge', level=stats['level'], total_xp=stats['total_xp'],
+        longest_streak=stats['longest_streak'], current_streak=stats['current_streak']
+    )
+    for item in avatars:
+        item['unlocked'] = item['key'] in unlocked_avatars
+    for item in badges:
+        item['unlocked'] = item['key'] in unlocked_badges
+    equipped_avatar = gamification.get_item('avatar', stats['equipped_avatar']) or gamification.get_item('avatar', 'default')
+    equipped_badge = gamification.get_item('badge', stats['equipped_badge']) if stats['equipped_badge'] else None
+    achievement_badges = db_module.get_child_achievements(child_id)
+    return {
+        'stats': stats,
+        'progress': progress,
+        'avatars': avatars,
+        'badges': badges,
+        'equipped_avatar': equipped_avatar,
+        'equipped_badge': equipped_badge,
+        'achievement_badges': achievement_badges,
+        'achievement_summary': {
+            'unlocked': sum(1 for item in achievement_badges if item['unlocked']),
+            'total': len(achievement_badges),
+        },
+    }
 
 
 def verify_totp(secret, code):
@@ -224,15 +376,27 @@ def generate_backup_codes(count=8):
     return codes
 
 
-def totp_qr_data_uri(uri):
+def qr_data_uri(data, fill_color='#0a0e1a', back_color='#ffffff', box_size=8):
     import qrcode
-    qr = qrcode.QRCode(version=1, box_size=8, border=2)
-    qr.add_data(uri)
+    qr = qrcode.QRCode(version=None, box_size=box_size, border=2)
+    qr.add_data(data)
     qr.make(fit=True)
-    img = qr.make_image(fill_color='#0a0e1a', back_color='#ffffff')
+    img = qr.make_image(fill_color=fill_color, back_color=back_color)
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     return 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
+
+
+def totp_qr_data_uri(uri):
+    return qr_data_uri(uri)
+
+
+def marketplace_qr_data_uri(token):
+    if has_request_context():
+        target = url_for('marketplace_verify', token=token, _external=True)
+    else:
+        target = f'/marketplace/verify/{token}'
+    return qr_data_uri(target, back_color='#ffffff', box_size=8)
 
 
 # --- Context processor ---
@@ -241,6 +405,7 @@ def totp_qr_data_uri(uri):
 def inject_globals():
     currency = db_module.get_currency_settings()
     selected_currency = CURRENCY_BY_CODE.get(currency['currency_code'], CURRENCIES[0])
+    ui_layout = db_module.get_ui_layout_settings()
     return {
         'now': datetime.now(),
         'current_month': datetime.now().strftime('%Y-%m'),
@@ -256,25 +421,35 @@ def inject_globals():
         'token_emoji': currency['token_emoji'],
         'token_logo': currency['token_logo'],
         'token_logo_type': currency['token_logo_type'],
-        'token_icon': ('<img src="/static/' + currency['token_logo'] + '" alt="" style="width:16px;height:16px;vertical-align:middle;">') if currency['token_logo_type'] == 'upload' and currency['token_logo'] else currency['token_emoji'],
+        'token_icon': token_icon_for(currency),
         'gbp_value': currency['gbp_value'],
         'remote_access': db_module.get_setting('remote_access_enabled', '0') == '1',
-        'theme_color': db_module.get_setting('theme_color', '#10b981'),
+        'theme_color': achievements.clean_color(
+            db_module.get_setting('theme_color', '#10b981')
+        ),
         'brightness_mode': db_module.get_setting('brightness_mode', 'dark'),
+        'ui_layout': ui_layout,
+        'menu_position': ui_layout['menu_position'],
+        'button_theme': ui_layout['button_theme'],
         'wallpaper': db_module.get_setting('wallpaper', ''),
         'data_dir': db_module.DATA_DIR,
+        'latest_broadcast': db_module.get_latest_active_broadcast(),
     }
 
 
 PUBLIC_ENDPOINTS = {
     'index', 'setup', 'login', 'logout', 'kiosk_login', 'kiosk_select',
-    'kiosk_child_logout', 'manifest', 'service_worker', 'chore_icon_file',
-    'trust_page', 'trust_ca',
+    'kiosk_rfid_scan', 'kiosk_child_logout', 'manifest', 'service_worker',
+    'chore_icon_file', 'trust_page', 'trust_ca',
 }
 KIOSK_ENDPOINTS = {
-    'child_chores', 'kiosk_start_chore', 'kiosk_finish_chore',
-    'kiosk_cancel_chore', 'kiosk_drop_chores', 'kiosk_claim_drop_chore',
-    'api_drop_chores', 'kiosk_calendar', 'kiosk_add_event',
+    'child_chores', 'kiosk_complete_chore', 'kiosk_drop_chores', 'kiosk_claim_drop_chore',
+    'kiosk_complete_drop_chore', 'kiosk_calendar', 'kiosk_add_event',
+    'kiosk_rewards', 'kiosk_equip_reward',
+    'kiosk_bank', 'kiosk_bank_deposit', 'kiosk_bank_withdraw', 'kiosk_loan_apply',
+    'kiosk_vault_add', 'kiosk_vault_deposit', 'kiosk_vault_withdraw',
+    'kiosk_shop', 'kiosk_shop_buy', 'kiosk_shop_cancel',
+    'kiosk_bills', 'kiosk_bill_pay',
 }
 ADMIN_ENDPOINTS = {
     'delete_kid', 'reset_pin', 'delete_chore_route', 'delete_payment_route',
@@ -282,20 +457,39 @@ ADMIN_ENDPOINTS = {
     'network_settings', 'network_update', 'network_qr',
     'storage_page', 'storage_move', 'storage_confirm_delete', 'storage_rollback',
     'currency_page', 'currency_save', 'currency_reset_logo',
-    'security_page', 'toggle_remote_access', 'settings',
+    'security_page', 'security_audit_page', 'toggle_remote_access', 'settings',
     'backup_page', 'backup_download', 'backup_restore',
     'system_info', 'check_update',
+    'snapshots_page', 'snapshot_create', 'snapshot_restore', 'snapshot_delete',
+    'update_check', 'update_apply',
+    'releases_page', 'release_build', 'release_tag', 'release_download',
 }
 STAFF_ENDPOINTS = {
-    'dashboard', 'family_dashboard', 'manage_kids', 'add_kid', 'edit_kid',
+    'dashboard', 'family_dashboard', 'rewards', 'bank',
+    'bank_settings', 'bank_deposit', 'bank_withdraw',
+    'bank_vault_add', 'bank_vault_close', 'bank_vault_unlock',
+    'bank_match_rule_save', 'bank_match_rule_delete',
+    'loan_approve', 'loan_reject',
+    'bills', 'bills_add', 'bills_toggle', 'bills_delete', 'bills_run',
+    'bill_occurrence_pay',
+    'marketplace', 'marketplace_item_add', 'marketplace_item_update',
+    'marketplace_item_toggle', 'marketplace_cash_adjust', 'marketplace_order_approve',
+    'marketplace_order_reject', 'marketplace_order_fulfill',
+    'marketplace_verify',
+    'manage_kids', 'add_kid', 'edit_kid',
     'manage_chores', 'add_chore', 'edit_chore', 'assign_chore_route',
     'manage_payments', 'add_payment', 'payout_all', 'view_logs',
     'manage_notices', 'add_notice', 'delete_notice',
     'manage_events', 'add_event', 'delete_event',
+    'achievements_page', 'achievement_milestone_add',
+    'achievement_milestone_toggle', 'achievement_milestone_delete',
+    'achievement_evaluate_all', 'achievement_broadcast_create',
+    'achievement_broadcast_delete', 'reports_page', 'reports_export',
     'approvals', 'approve_chore', 'reject_chore',
     'manage_drop_chores', 'add_drop_chore', 'delete_drop_chore',
 }
 TWO_FACTOR_ENDPOINTS = {'setup_2fa', 'disable_2fa'}
+LIVE_ENDPOINTS = {'events_stream', 'alerts_feed', 'api_drop_chores'}
 
 ROUTE_ACCESS = {}
 for _endpoint in PUBLIC_ENDPOINTS:
@@ -308,6 +502,8 @@ for _endpoint in STAFF_ENDPOINTS:
     ROUTE_ACCESS[_endpoint] = 'staff'
 for _endpoint in TWO_FACTOR_ENDPOINTS:
     ROUTE_ACCESS[_endpoint] = '2fa'
+for _endpoint in LIVE_ENDPOINTS:
+    ROUTE_ACCESS[_endpoint] = 'live'
 
 
 @app.before_request
@@ -335,6 +531,21 @@ def enforce_route_access():
         return None
     if access == '2fa':
         return None
+    if access == 'live':
+        uid = session.get('user_id')
+        if uid:
+            user = db_module.get_user(uid)
+            if user and user['is_active']:
+                g.user = user
+                g.pending_2fa = False
+                return None
+        child_id = session.get('kiosk_child_id')
+        if child_id:
+            child = db_module.get_user(child_id)
+            if child and child['role'] == 'child' and child['is_active']:
+                g.child = child
+                return None
+        abort(401)
     uid = session.get('user_id')
     if not uid:
         return redirect(url_for('login'))
@@ -351,6 +562,12 @@ def enforce_route_access():
     g.user = user
     g.pending_2fa = False
     return None
+
+
+@app.after_request
+def apply_security_headers(response):
+    https = os.environ.get('CHOREGREMLIN_HTTPS') == '1'
+    return security_audit.apply_headers(response, https=https)
 
 
 # ====================
@@ -401,7 +618,7 @@ def login():
         login_id = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         totp_code = request.form.get('totp_code', '').strip()
-        ip_address = request.headers.get('X-Forwarded-For', request.remote_addr or 'unknown')
+        ip_address = client_ip()
 
         # Check lockout
         is_locked, minutes_left = db_module.check_lockout(login_id, ip_address)
@@ -412,12 +629,10 @@ def login():
 
         user = db_module.get_user_by_login(login_id)
         if user and db_module.verify_password(user, password):
+            _clear_auth_session()
             remote_access = db_module.get_setting('remote_access_enabled', '0') == '1'
             totp = db_module.get_totp_secret(user['id'])
             if user['role'] == 'admin' and not totp:
-                session.pop('user_id', None)
-                session.pop('role', None)
-                session.pop('2fa_verified', None)
                 session['pending_2fa_user_id'] = user['id']
                 session['pending_2fa_forced'] = True
                 db_module.log_login_attempt(login_id, ip_address, True, '2fa_setup_required')
@@ -481,10 +696,32 @@ def kiosk_login():
     return render_template('kiosk_login.html', children=children)
 
 
+@app.route('/kiosk/scan', methods=['POST'])
+@csrf.exempt
+def kiosk_rfid_scan():
+    if not _rfid_request_authorized():
+        hardware_beep('error')
+        return jsonify({'status': 'error', 'message': 'RFID scan is not authorized from this address'}), 403
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        payload = {}
+    tag_uid = request.form.get('tag_uid') or payload.get('tag_uid') or payload.get('uid') or ''
+    if not tag_uid:
+        hardware_beep('error')
+        return jsonify({'status': 'error', 'message': 'tag_uid is required'}), 400
+    result, code = process_rfid_scan(tag_uid)
+    if result['status'] in {'selected', 'completed'}:
+        session['kiosk_child_id'] = result['child_id']
+        result['redirect'] = url_for('child_chores')
+    hardware_beep({'completed': 'success', 'selected': 'start'}.get(result['status'], 'error'))
+    return jsonify(result), code
+
+
 @app.route('/kiosk/select/<int:child_id>', methods=['GET', 'POST'])
 def kiosk_select(child_id):
     child = db_module.get_user(child_id)
     if not child or child['role'] != 'child' or not child['is_active']:
+        hardware_beep('error')
         flash('Child not found.', 'danger')
         return redirect(url_for('kiosk_login'))
 
@@ -492,16 +729,20 @@ def kiosk_select(child_id):
         if child['pin']:
             result = db_module.check_kiosk_pin(child, request.form.get('pin', ''))
             if result == 'locked':
+                hardware_beep('error')
                 flash('Too many wrong PINs. Please wait a few minutes and try again.', 'danger')
                 return render_template('kiosk_pin.html', child=child)
             if result == 'wrong':
+                hardware_beep('error')
                 flash('Incorrect PIN. Please try again.', 'danger')
                 return render_template('kiosk_pin.html', child=child)
+        hardware_beep('success')
         session['kiosk_child_id'] = child_id
         return redirect(url_for('child_chores'))
 
     if child['pin']:
         return render_template('kiosk_pin.html', child=child)
+    hardware_beep('success')
     session['kiosk_child_id'] = child_id
     return redirect(url_for('child_chores'))
 
@@ -510,61 +751,314 @@ def kiosk_select(child_id):
 @kiosk_mode()
 def child_chores():
     child = g.child
-    assigned_ids = db_module.get_assigned_chore_ids(child['id'])
-    if assigned_ids:
-        all_chores = db_module.get_all_chores(active_only=True)
-        chores = [c for c in all_chores if c['id'] in assigned_ids]
-    else:
-        chores = db_module.get_all_chores(active_only=True)
-    active_logs = db_module.get_active_logs(child['id'])
-    active_ids = {log['chore_id'] for log in active_logs}
-    other_active_ids = {log['chore_id'] for log in db_module.get_active_logs() if log['user_id'] != child['id']}
-    chores = [c for c in chores if not (c['single_child_only'] and c['id'] in other_active_ids)]
-    if not child['can_do_hard_chores']:
-        chores = [c for c in chores if not c['requires_hard_chores']]
+    db_module.update_drop_chore_points()
+    chores = db_module.get_chores_for_child(child['id'], child['can_do_hard_chores'])
+    assigned_drops = [_drop_view(drop) for drop in db_module.get_assigned_drop_chores(child['id'])]
     balance = db_module.get_balance(child['id'])
     month_earnings = db_module.get_monthly_earnings(child['id'])
     my_earnings = month_earnings[0] if month_earnings else None
+    rewards = gamification_view(child['id'])
     return render_template('child_chores.html', child=child, chores=chores,
-                           active_logs=active_logs, active_ids=active_ids,
-                           balance=balance, my_earnings=my_earnings)
+                           assigned_drops=assigned_drops, balance=balance,
+                           my_earnings=my_earnings, rewards=rewards)
 
 
-@app.route('/kiosk/start/<int:chore_id>', methods=['POST'])
+@app.route('/kiosk/rewards')
 @kiosk_mode()
-def kiosk_start_chore(chore_id):
+def kiosk_rewards():
+    child = g.child
+    return render_template('kiosk_rewards.html', child=child,
+                           **gamification_view(child['id']))
+
+
+@app.route('/kiosk/rewards/equip', methods=['POST'])
+@kiosk_mode()
+def kiosk_equip_reward():
+    item_type = request.form.get('item_type', '')
+    item_key = request.form.get('item_key', '')
+    try:
+        db_module.equip_gamification_item(g.child['id'], item_type, item_key)
+        hardware_beep('success')
+        flash('Reward equipped!', 'success')
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'danger')
+    return redirect(url_for('kiosk_rewards'))
+
+
+@app.route('/kiosk/bank')
+@kiosk_mode()
+def kiosk_bank():
+    child = g.child
+    db_module.apply_savings_interest()
+    loans = db_module.get_loans(child['id'], limit=20)
+    return render_template(
+        'kiosk_bank.html', child=child,
+        account=db_module.get_savings_account(child['id']),
+        spendable=db_module.get_balance(child['id']),
+        transactions=db_module.get_bank_transactions(child['id'], limit=15),
+        loans=loans,
+        active_loan=next((loan for loan in loans if loan['status'] == 'active'), None),
+        pending_loan=next((loan for loan in loans if loan['status'] == 'pending'), None),
+        vaults=db_module.get_savings_vaults_with_progress(
+            child['id'], include_match_rules=True
+        ),
+        vault_total=db_module.get_savings_vault_total(child['id']),
+        vault_transactions=db_module.get_savings_vault_transactions(
+            user_id=child['id'], limit=15
+        ),
+    )
+
+
+@app.route('/kiosk/bills')
+@kiosk_mode()
+def kiosk_bills():
+    child = g.child
+    db_module.schedule_due_bills()
+    db_module.apply_overdue_late_fees()
+    return render_template(
+        'kiosk_bills.html', child=child,
+        spendable=db_module.get_balance(child['id']),
+        summary=db_module.get_bill_summary(child['id']),
+        open_occurrences=db_module.get_bill_occurrences(
+            user_id=child['id'], include_paid=False, limit=100
+        ),
+        paid_occurrences=db_module.get_bill_occurrences(
+            user_id=child['id'], status='paid', limit=20
+        ),
+    )
+
+
+@app.route('/kiosk/bills/<int:occurrence_id>/pay', methods=['POST'])
+@kiosk_mode()
+def kiosk_bill_pay(occurrence_id):
+    try:
+        result = db_module.pay_bill_occurrence(
+            occurrence_id, source='kiosk', user_id=g.child['id']
+        )
+        db_module.log_activity(
+            g.child['id'], 'bill_pay',
+            f'Paid {result["paid"]:.2f} toward {result["occurrence"]["name"]}'
+        )
+        hardware_beep('success')
+        flash(f'Bill paid: {result["paid"]:.2f}.', 'success')
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'danger')
+    return redirect(url_for('kiosk_bills'))
+
+
+@app.route('/kiosk/bank/deposit', methods=['POST'])
+@kiosk_mode()
+def kiosk_bank_deposit():
+    try:
+        account = db_module.deposit_to_savings(g.child['id'], request.form.get('amount', '0'))
+        db_module.log_activity(
+            g.child['id'], 'bank_deposit',
+            f'Deposited {request.form.get("amount", "0")} into savings'
+        )
+        hardware_beep('success')
+        flash(f'Savings balance is now {account["balance"]:.2f}.', 'success')
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'danger')
+    return redirect(url_for('kiosk_bank'))
+
+
+@app.route('/kiosk/bank/withdraw', methods=['POST'])
+@kiosk_mode()
+def kiosk_bank_withdraw():
+    try:
+        account = db_module.withdraw_from_savings(g.child['id'], request.form.get('amount', '0'))
+        db_module.log_activity(
+            g.child['id'], 'bank_withdraw',
+            f'Withdrew {request.form.get("amount", "0")} from savings'
+        )
+        hardware_beep('success')
+        flash(f'Savings balance is now {account["balance"]:.2f}.', 'success')
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'danger')
+    return redirect(url_for('kiosk_bank'))
+
+
+@app.route('/kiosk/loan/apply', methods=['POST'])
+@kiosk_mode()
+def kiosk_loan_apply():
+    try:
+        loan_id = db_module.apply_for_loan(
+            g.child['id'],
+            request.form.get('amount', '0'),
+            request.form.get('term_weeks', '1'),
+            request.form.get('purpose', ''),
+        )
+        db_module.log_activity(
+            g.child['id'], 'loan_apply',
+            f'Requested loan #{loan_id} for {request.form.get("amount", "0")}'
+        )
+        hardware_beep('success')
+        flash('Loan request sent to a parent for approval.', 'success')
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'danger')
+    return redirect(url_for('kiosk_bank'))
+
+
+@app.route('/kiosk/bank/vaults/add', methods=['POST'])
+@kiosk_mode()
+def kiosk_vault_add():
+    try:
+        vault = db_module.create_savings_vault(
+            g.child['id'],
+            request.form.get('name', ''),
+            request.form.get('target_amount', '0'),
+            target_date=request.form.get('target_date', ''),
+            lock_until_date=request.form.get('lock_until_date') == '1',
+            lock_until_target=request.form.get('lock_until_target') == '1',
+            description=request.form.get('description', ''),
+            icon=request.form.get('icon', 'bi-bullseye'),
+            color=request.form.get('color', g.child['color']),
+        )
+        db_module.log_activity(
+            g.child['id'], 'vault_create',
+            f'Created savings goal {vault["name"]}'
+        )
+        hardware_beep('success')
+        flash(f'Goal "{vault["name"]}" created.', 'success')
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'danger')
+    return redirect(url_for('kiosk_bank') + '#savings-goals')
+
+
+@app.route('/kiosk/bank/vaults/<int:vault_id>/deposit', methods=['POST'])
+@kiosk_mode()
+def kiosk_vault_deposit(vault_id):
+    try:
+        result = db_module.deposit_to_savings_vault(
+            vault_id, g.child['id'], request.form.get('amount', '0')
+        )
+        vault = result['vault']
+        message = f'Added to {vault["name"]}. Goal balance {vault["balance"]:.2f}.'
+        if result['matched'] > 0:
+            message += f' Parent matched {result["matched"]:.2f}.'
+        db_module.log_activity(
+            g.child['id'], 'vault_deposit',
+            f'Added to savings goal {vault["name"]}; balance {vault["balance"]:.2f}'
+        )
+        hardware_beep('success')
+        flash(message, 'success')
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'danger')
+    return redirect(url_for('kiosk_bank') + '#savings-goals')
+
+
+@app.route('/kiosk/bank/vaults/<int:vault_id>/withdraw', methods=['POST'])
+@kiosk_mode()
+def kiosk_vault_withdraw(vault_id):
+    try:
+        vault = db_module.withdraw_from_savings_vault(
+            vault_id, g.child['id'], request.form.get('amount', '0')
+        )
+        db_module.log_activity(
+            g.child['id'], 'vault_withdraw',
+            f'Withdrew from savings goal {vault["name"]}; balance {vault["balance"]:.2f}'
+        )
+        hardware_beep('success')
+        flash(f'Withdrew from {vault["name"]}. Goal balance {vault["balance"]:.2f}.', 'success')
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'danger')
+    return redirect(url_for('kiosk_bank') + '#savings-goals')
+
+
+@app.route('/kiosk/shop')
+@kiosk_mode()
+def kiosk_shop():
+    child = g.child
+    orders = db_module.get_marketplace_orders(child['id'], limit=50)
+    active_orders = []
+    history = []
+    for order in orders:
+        row = dict(order)
+        if row['status'] in ('pending', 'approved'):
+            row['qr_data_uri'] = marketplace_qr_data_uri(row['qr_token'])
+            active_orders.append(row)
+        else:
+            history.append(row)
+    return render_template(
+        'kiosk_shop.html', child=child,
+        items=db_module.get_marketplace_items(active_only=True),
+        balance=db_module.get_balance(child['id']),
+        cash_balance=db_module.get_cash_balance(child['id']),
+        active_orders=active_orders, history=history,
+    )
+
+
+@app.route('/kiosk/shop/buy/<int:item_id>', methods=['POST'])
+@kiosk_mode()
+def kiosk_shop_buy(item_id):
+    try:
+        order_id = db_module.create_marketplace_order(
+            g.child['id'], item_id, request.form.get('quantity', '1')
+        )
+        db_module.log_activity(
+            g.child['id'], 'marketplace_purchase',
+            f'Placed marketplace order #{order_id}'
+        )
+        hardware_beep('success')
+        flash('Order placed! Show the QR code to a parent to collect it.', 'success')
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'danger')
+    return redirect(url_for('kiosk_shop'))
+
+
+@app.route('/kiosk/shop/orders/<int:order_id>/cancel', methods=['POST'])
+@kiosk_mode()
+def kiosk_shop_cancel(order_id):
+    try:
+        db_module.cancel_marketplace_order(order_id, g.child['id'])
+        db_module.log_activity(
+            g.child['id'], 'marketplace_cancel',
+            f'Cancelled marketplace order #{order_id}'
+        )
+        hardware_beep('cancel')
+        flash('Order cancelled and your balance refunded.', 'info')
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'danger')
+    return redirect(url_for('kiosk_shop'))
+
+
+def _complete_chore_for_child(chore_id):
     child = g.child
     chore = db_module.get_chore(chore_id)
-    if not chore or not chore['is_active']:
+    if not chore:
+        hardware_beep('error')
         flash('Chore not available.', 'danger')
         return redirect(url_for('child_chores'))
-    if chore['requires_hard_chores'] and not child['can_do_hard_chores']:
-        flash('This chore is for older kids only.', 'warning')
+    try:
+        db_module.complete_chore(child['id'], chore_id)
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'warning')
         return redirect(url_for('child_chores'))
-    if chore['single_child_only'] and db_module.is_chore_in_progress_by_others(chore_id, child['id']):
-        flash('Someone else is already doing this chore.', 'warning')
-        return redirect(url_for('child_chores'))
-    db_module.start_chore(child['id'], chore_id)
-    flash(f'Started: {chore["name"]}', 'success')
+    db_module.log_activity(
+        child['id'], 'complete_chore',
+        f'Completed {chore["name"]}, pending approval'
+    )
+    hardware_beep('success')
+    flash('Great job! Your chore is waiting for a parent to approve it.', 'success')
     return redirect(url_for('child_chores'))
 
 
-@app.route('/kiosk/finish/<int:log_id>', methods=['POST'])
+@app.route('/kiosk/chores/<int:chore_id>/complete', methods=['POST'])
+@app.route('/kiosk/complete/<int:chore_id>', methods=['POST'])
 @kiosk_mode()
-def kiosk_finish_chore(log_id):
-    log = db_module.finish_chore(log_id)
-    if log:
-        db_module.log_activity(log['user_id'], 'finish_chore', 'Completed a chore, pending approval')
-        flash(f'Great job! A parent will review your chore soon.', 'success')
-    return redirect(url_for('child_chores'))
-
-
-@app.route('/kiosk/cancel/<int:log_id>', methods=['POST'])
-@kiosk_mode()
-def kiosk_cancel_chore(log_id):
-    db_module.cancel_chore_log(log_id)
-    flash('Chore cancelled.', 'info')
-    return redirect(url_for('child_chores'))
+def kiosk_complete_chore(chore_id):
+    return _complete_chore_for_child(chore_id)
 
 
 @app.route('/kiosk/logout')
@@ -585,7 +1079,7 @@ def dashboard():
     earnings = db_module.get_monthly_earnings(month=month)
     total_earned = db_module.get_total_earned(month)
     chore_count = db_module.get_chore_count(month)
-    active_logs = db_module.get_active_logs()
+    pending_approvals = db_module.get_pending_approvals()
     stat_icons = {
         'earned': db_module.get_setting('stat_icon_earned', ''),
         'chores': db_module.get_setting('stat_icon_chores', ''),
@@ -593,7 +1087,7 @@ def dashboard():
     }
     return render_template('dashboard.html', children=children, earnings=earnings,
                            total_earned=total_earned, chore_count=chore_count,
-                           active_logs=active_logs, selected_month=month,
+                           pending_approvals=pending_approvals, selected_month=month,
                            stat_icons=stat_icons)
 
 
@@ -614,6 +1108,727 @@ def family_dashboard():
                            active_children=active_children,
                            holiday_children=holiday_children,
                            sick_children=sick_children)
+
+
+@app.route('/rewards')
+@require_role('admin', 'parent')
+def rewards():
+    children = []
+    for row in db_module.get_gamification_overview():
+        child = dict(row)
+        view = gamification_view(row['user_id'])
+        child.update({
+            'total_xp': view['stats']['total_xp'],
+            'level': view['stats']['level'],
+            'current_streak': view['stats']['current_streak'],
+            'longest_streak': view['stats']['longest_streak'],
+            'last_completed_date': view['stats']['last_completed_date'],
+            'progress': view['progress'],
+            'equipped_avatar_item': view['equipped_avatar'],
+            'equipped_badge_item': view['equipped_badge'],
+            'achievement_summary': view['achievement_summary'],
+        })
+        children.append(child)
+    return render_template(
+        'rewards.html', children=children,
+        avatars=gamification.AVATAR_CATALOG,
+        badges=gamification.BADGE_CATALOG,
+        xp_events=db_module.get_xp_events(limit=12),
+    )
+
+
+def _evaluate_all_achievements():
+    unlocked = 0
+    for child in db_module.get_children():
+        unlocked += len(db_module.evaluate_achievements(child['id']))
+    return unlocked
+
+
+@app.route('/achievements')
+@require_role('admin', 'parent')
+def achievements_page():
+    children = []
+    for row in db_module.get_children():
+        child = dict(row)
+        items = db_module.get_child_achievements(child['id'])
+        unlocked = [item for item in items if item['unlocked']]
+        child['achievement_summary'] = {
+            'unlocked': len(unlocked),
+            'total': len(items),
+        }
+        child['latest_achievement'] = unlocked[0] if unlocked else None
+        children.append(child)
+    return render_template(
+        'achievements.html',
+        children=children,
+        metrics=achievements.METRIC_CHOICES,
+        builtin_achievements=achievements.builtin_definitions(),
+        custom_milestones=db_module.get_custom_milestones(),
+        unlocks=db_module.get_achievement_unlocks(limit=25),
+        broadcasts=db_module.get_all_broadcasts(limit=30),
+    )
+
+
+@app.route('/achievements/milestones/add', methods=['POST'])
+@require_role('admin', 'parent')
+def achievement_milestone_add():
+    try:
+        milestone = db_module.create_custom_milestone(
+            request.form.get('name', ''),
+            description=request.form.get('description', ''),
+            icon=request.form.get('icon', 'bi-award-fill'),
+            color=request.form.get('color', '#10b981'),
+            metric=request.form.get('metric', 'chores_completed'),
+            threshold=request.form.get('threshold', '1'),
+            reward_type=request.form.get('reward_type', 'none'),
+            reward_value=request.form.get('reward_value', '0'),
+            created_by=session.get('user_id'),
+        )
+        unlocked = _evaluate_all_achievements()
+        db_module.log_activity(
+            session.get('user_id'), 'add_milestone',
+            f'Added custom milestone: {milestone["name"]}'
+        )
+        flash(
+            f'Added milestone "{milestone["name"]}". '
+            f'{unlocked} achievement(s) unlocked.',
+            'success'
+        )
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('achievements_page'))
+
+
+@app.route('/achievements/milestones/<int:milestone_id>/toggle', methods=['POST'])
+@require_role('admin', 'parent')
+def achievement_milestone_toggle(milestone_id):
+    milestone = db_module.get_custom_milestone(milestone_id)
+    if not milestone:
+        flash('Milestone not found.', 'danger')
+        return redirect(url_for('achievements_page'))
+    try:
+        updated = db_module.set_custom_milestone_active(
+            milestone_id, not bool(milestone['is_active'])
+        )
+        unlocked = _evaluate_all_achievements() if updated['is_active'] else 0
+        db_module.log_activity(
+            session.get('user_id'), 'toggle_milestone',
+            f'{"Activated" if updated["is_active"] else "Paused"} milestone: {updated["name"]}'
+        )
+        flash(
+            f'Milestone "{updated["name"]}" '
+            f'{"activated" if updated["is_active"] else "paused"}.'
+            + (f' {unlocked} achievement(s) unlocked.' if unlocked else ''),
+            'success'
+        )
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('achievements_page'))
+
+
+@app.route('/achievements/milestones/<int:milestone_id>/delete', methods=['POST'])
+@require_role('admin', 'parent')
+def achievement_milestone_delete(milestone_id):
+    try:
+        milestone = db_module.delete_custom_milestone(milestone_id)
+        db_module.log_activity(
+            session.get('user_id'), 'delete_milestone',
+            f'Deleted custom milestone: {milestone["name"]}'
+        )
+        flash(f'Deleted milestone "{milestone["name"]}".', 'info')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('achievements_page'))
+
+
+@app.route('/achievements/evaluate', methods=['POST'])
+@require_role('admin', 'parent')
+def achievement_evaluate_all():
+    unlocked = _evaluate_all_achievements()
+    db_module.log_activity(
+        session.get('user_id'), 'evaluate_achievements',
+        f'Checked achievement progress for all children ({unlocked} new unlocks)'
+    )
+    flash(f'Checked every child. {unlocked} new achievement(s) unlocked.', 'success')
+    return redirect(url_for('achievements_page'))
+
+
+@app.route('/achievements/broadcast', methods=['POST'])
+@require_role('admin', 'parent')
+def achievement_broadcast_create():
+    try:
+        broadcast = db_module.create_broadcast_alert(
+            request.form.get('title', ''),
+            body=request.form.get('body', ''),
+            kind=request.form.get('kind', 'celebration'),
+            child_id=request.form.get('child_id') or None,
+            icon=request.form.get('icon', 'bi-megaphone-fill'),
+            color=request.form.get('color', '#10b981'),
+            created_by=session.get('user_id'),
+            expires_at=request.form.get('expires_at', ''),
+        )
+        db_module.log_activity(
+            session.get('user_id'), 'broadcast_alert',
+            f'Broadcast: {broadcast["title"]}'
+        )
+        flash('Family broadcast posted.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('achievements_page'))
+
+
+@app.route('/achievements/broadcast/<int:broadcast_id>/delete', methods=['POST'])
+@require_role('admin', 'parent')
+def achievement_broadcast_delete(broadcast_id):
+    if db_module.deactivate_broadcast_alert(broadcast_id):
+        flash('Broadcast cleared.', 'info')
+    else:
+        flash('Broadcast not found.', 'danger')
+    return redirect(url_for('achievements_page'))
+
+
+# --- Financial reports & ledger exports (Phase 13) ---
+
+def _report_filters():
+    child_id = request.args.get('child_id', '').strip()
+    if child_id:
+        try:
+            child_id = int(child_id)
+        except ValueError:
+            child_id = None
+    else:
+        child_id = None
+    start_date, end_date = reporting.normalize_range(
+        request.args.get('start', ''), request.args.get('end', '')
+    )
+    kind = reporting.normalize_kind(request.args.get('report', 'ledger'))
+    return child_id, start_date, end_date, kind
+
+
+@app.route('/reports')
+@require_role('admin', 'parent')
+def reports_page():
+    try:
+        child_id, start_date, end_date, kind = _report_filters()
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+        child_id, start_date, end_date, kind = None, None, None, 'ledger'
+    summary = db_module.get_financial_summary(
+        start_date=start_date, end_date=end_date, user_id=child_id
+    )
+    data = db_module.get_report_data(
+        kind, user_id=child_id, start_date=start_date, end_date=end_date
+    )
+    return render_template(
+        'reports.html',
+        children=db_module.get_children(),
+        report_kinds=reporting.REPORT_KINDS,
+        report_labels=reporting.REPORT_LABELS,
+        report_kind=kind,
+        report_data=data,
+        summary=summary,
+        selected_child=child_id,
+        start_date=start_date or '',
+        end_date=end_date or '',
+        payment_labels=reporting.PAYMENT_TYPE_LABELS,
+    )
+
+
+@app.route('/reports/export.csv')
+@require_role('admin', 'parent')
+def reports_export():
+    try:
+        child_id, start_date, end_date, kind = _report_filters()
+        data = db_module.get_report_data(
+            kind, user_id=child_id, start_date=start_date, end_date=end_date
+        )
+        payload = reporting.build_export(kind, data)
+    except ValueError as exc:
+        return make_response(str(exc), 400, {'Content-Type': 'text/plain; charset=utf-8'})
+    filename = reporting.default_filename(kind, start_date, end_date)
+    response = make_response(payload)
+    response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    db_module.log_activity(
+        session.get('user_id'), 'export_report',
+        f'Exported {reporting.REPORT_LABELS[kind]} report ({len(data) if isinstance(data, list) else "summary"})'
+    )
+    return response
+
+
+@app.route('/bank')
+@require_role('admin', 'parent')
+def bank():
+    db_module.apply_savings_interest()
+    accounts = []
+    for child in db_module.get_children():
+        account = dict(db_module.get_savings_account(child['id']))
+        account['color'] = child['color']
+        account['spendable'] = db_module.get_balance(child['id'])
+        accounts.append(account)
+    loans = db_module.get_loans(limit=200)
+    children = db_module.get_children()
+    return render_template(
+        'bank.html', accounts=accounts, loans=loans, children=children,
+        pending_loans=[loan for loan in loans if loan['status'] == 'pending'],
+        active_loans=[loan for loan in loans if loan['status'] == 'active'],
+        recent_transactions=db_module.get_bank_transactions(limit=40),
+        vaults=db_module.get_savings_vaults_with_progress(include_match_rules=True),
+        match_rules=db_module.get_savings_match_rules(),
+        vault_total=db_module.get_savings_vault_total(),
+    )
+
+
+@app.route('/bank/<int:child_id>/settings', methods=['POST'])
+@require_role('admin', 'parent')
+def bank_settings(child_id):
+    try:
+        db_module.update_savings_settings(
+            child_id,
+            request.form.get('annual_interest_rate', '5'),
+            request.form.get('compounding', 'weekly'),
+        )
+        flash('Savings settings updated.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bank'))
+
+
+@app.route('/bank/<int:child_id>/deposit', methods=['POST'])
+@require_role('admin', 'parent')
+def bank_deposit(child_id):
+    try:
+        account = db_module.deposit_to_savings(child_id, request.form.get('amount', '0'))
+        db_module.log_activity(
+            session.get('user_id'), 'bank_deposit',
+            f'Deposited into savings for child #{child_id}; balance {account["balance"]:.2f}'
+        )
+        flash('Savings deposit recorded.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bank'))
+
+
+@app.route('/bank/<int:child_id>/withdraw', methods=['POST'])
+@require_role('admin', 'parent')
+def bank_withdraw(child_id):
+    try:
+        account = db_module.withdraw_from_savings(child_id, request.form.get('amount', '0'))
+        db_module.log_activity(
+            session.get('user_id'), 'bank_withdraw',
+            f'Withdrew from savings for child #{child_id}; balance {account["balance"]:.2f}'
+        )
+        flash('Savings withdrawal recorded.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bank'))
+
+
+@app.route('/bank/vaults/add', methods=['POST'])
+@require_role('admin', 'parent')
+def bank_vault_add():
+    try:
+        vault = db_module.create_savings_vault(
+            request.form.get('child_id'),
+            request.form.get('name', ''),
+            request.form.get('target_amount', '0'),
+            target_date=request.form.get('target_date', ''),
+            lock_until_date=request.form.get('lock_until_date') == '1',
+            lock_until_target=request.form.get('lock_until_target') == '1',
+            description=request.form.get('description', ''),
+            icon=request.form.get('icon', 'bi-bullseye'),
+            color=request.form.get('color', '#10b981'),
+        )
+        db_module.log_activity(
+            session.get('user_id'), 'vault_create',
+            f'Created savings goal {vault["name"]} for {vault["user_name"]}'
+        )
+        flash('Savings goal created.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bank') + '#savings-vaults')
+
+
+@app.route('/bank/vaults/<int:vault_id>/close', methods=['POST'])
+@require_role('admin', 'parent')
+def bank_vault_close(vault_id):
+    try:
+        vault = db_module.close_savings_vault(vault_id)
+        db_module.log_activity(
+            session.get('user_id'), 'vault_close',
+            f'Closed savings goal {vault["name"]} for {vault["user_name"]}'
+        )
+        flash(f'Closed "{vault["name"]}" and returned any balance to spendable.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bank') + '#savings-vaults')
+
+
+@app.route('/bank/vaults/<int:vault_id>/unlock', methods=['POST'])
+@require_role('admin', 'parent')
+def bank_vault_unlock(vault_id):
+    try:
+        vault = db_module.unlock_savings_vault(vault_id)
+        db_module.log_activity(
+            session.get('user_id'), 'vault_unlock',
+            f'Removed locks from savings goal {vault["name"]} for {vault["user_name"]}'
+        )
+        flash(f'Locks removed from "{vault["name"]}".', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bank') + '#savings-vaults')
+
+
+@app.route('/bank/match-rules/save', methods=['POST'])
+@require_role('admin', 'parent')
+def bank_match_rule_save():
+    try:
+        rule = db_module.set_savings_match_rule(
+            request.form.get('child_id'),
+            request.form.get('vault_id') or None,
+            request.form.get('match_percent', '50'),
+            request.form.get('weekly_cap', '10'),
+            is_active=request.form.get('is_active') == '1',
+        )
+        db_module.log_activity(
+            session.get('user_id'), 'match_rule_save',
+            f'Saved matching rule for {rule["user_name"]}'
+        )
+        flash('Parent matching rule saved.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bank') + '#matching-rules')
+
+
+@app.route('/bank/match-rules/<int:rule_id>/delete', methods=['POST'])
+@require_role('admin', 'parent')
+def bank_match_rule_delete(rule_id):
+    try:
+        rule = db_module.delete_savings_match_rule(rule_id)
+        db_module.log_activity(
+            session.get('user_id'), 'match_rule_delete',
+            f'Removed matching rule for {rule["user_name"]}'
+        )
+        flash('Parent matching rule removed.', 'info')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bank') + '#matching-rules')
+
+
+@app.route('/bank/loans/<int:loan_id>/approve', methods=['POST'])
+@require_role('admin', 'parent')
+def loan_approve(loan_id):
+    term_weeks = request.form.get('term_weeks') or None
+    principal = request.form.get('principal') or None
+    try:
+        loan = db_module.approve_loan(
+            loan_id, session.get('user_id'),
+            annual_rate=request.form.get('annual_rate', '0'),
+            term_weeks=term_weeks,
+            principal=principal,
+        )
+        db_module.log_activity(
+            session.get('user_id'), 'loan_approve',
+            f'Approved loan #{loan_id} for {loan["user_name"]}'
+        )
+        flash('Loan approved and principal added to spendable balance.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bank'))
+
+
+@app.route('/bank/loans/<int:loan_id>/reject', methods=['POST'])
+@require_role('admin', 'parent')
+def loan_reject(loan_id):
+    try:
+        loan = db_module.reject_loan(loan_id, request.form.get('reason', ''))
+        db_module.log_activity(
+            session.get('user_id'), 'loan_reject',
+            f'Rejected loan #{loan_id} for {loan["user_name"]}'
+        )
+        flash('Loan request rejected.', 'info')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bank'))
+
+
+@app.route('/bills')
+@require_role('admin', 'parent')
+def bills():
+    db_module.schedule_due_bills()
+    db_module.apply_overdue_late_fees()
+    children = db_module.get_children()
+    per_child = []
+    for child in children:
+        per_child.append({
+            'child': child,
+            'summary': db_module.get_bill_summary(child['id']),
+            'spendable': db_module.get_balance(child['id']),
+        })
+    return render_template(
+        'bills.html',
+        children=children,
+        bills=db_module.get_household_bills(),
+        open_occurrences=db_module.get_bill_occurrences(include_paid=False, limit=500),
+        paid_occurrences=db_module.get_bill_occurrences(status='paid', limit=30),
+        summary=db_module.get_bill_summary(),
+        per_child=per_child,
+        today=clock.local_date_text(),
+    )
+
+
+@app.route('/bills/add', methods=['POST'])
+@require_role('admin', 'parent')
+def bills_add():
+    try:
+        bill = db_module.create_household_bill(
+            request.form.get('child_id'),
+            request.form.get('name', ''),
+            request.form.get('category', 'other'),
+            request.form.get('amount', '0'),
+            request.form.get('frequency', 'weekly'),
+            request.form.get('next_due_date', ''),
+            auto_deduct=request.form.get('auto_deduct') == '1',
+            late_fee_type=request.form.get('late_fee_type', 'none'),
+            late_fee_value=request.form.get('late_fee_value', '0'),
+        )
+        db_module.log_activity(
+            session.get('user_id'), 'bill_add',
+            f'Added bill {bill["name"]} for {bill["user_name"]}'
+        )
+        flash('Household bill added.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bills'))
+
+
+@app.route('/bills/<int:bill_id>/toggle', methods=['POST'])
+@require_role('admin', 'parent')
+def bills_toggle(bill_id):
+    try:
+        bill = db_module.get_household_bill(bill_id)
+        if not bill:
+            raise ValueError('Bill not found.')
+        bill = db_module.set_household_bill_active(bill_id, not bill['is_active'])
+        db_module.log_activity(
+            session.get('user_id'), 'bill_toggle',
+            f'{"Activated" if bill["is_active"] else "Paused"} bill {bill["name"]}'
+        )
+        flash(f'Bill {"activated" if bill["is_active"] else "paused"}.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bills'))
+
+
+@app.route('/bills/<int:bill_id>/delete', methods=['POST'])
+@require_role('admin', 'parent')
+def bills_delete(bill_id):
+    try:
+        bill = db_module.delete_household_bill(bill_id)
+        db_module.log_activity(
+            session.get('user_id'), 'bill_delete',
+            f'Deleted bill {bill["name"]} for {bill["user_name"]}'
+        )
+        flash('Bill deleted.', 'info')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bills'))
+
+
+@app.route('/bills/run', methods=['POST'])
+@require_role('admin', 'parent')
+def bills_run():
+    created = db_module.schedule_due_bills()
+    fees = db_module.apply_overdue_late_fees()
+    flash(
+        f'Created {created} bill occurrence(s); applied {fees["fees_applied"]} late fee(s).',
+        'success'
+    )
+    return redirect(url_for('bills'))
+
+
+@app.route('/bills/occurrences/<int:occurrence_id>/pay', methods=['POST'])
+@require_role('admin', 'parent')
+def bill_occurrence_pay(occurrence_id):
+    try:
+        result = db_module.pay_bill_occurrence(
+            occurrence_id, source='parent', created_by=session.get('user_id')
+        )
+        db_module.log_activity(
+            session.get('user_id'), 'bill_pay',
+            f'Paid {result["paid"]:.2f} toward {result["occurrence"]["name"]} for '
+            f'{result["occurrence"]["user_name"]}'
+        )
+        flash(f'Bill payment recorded: {result["paid"]:.2f}.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('bills'))
+
+
+@app.route('/marketplace')
+@require_role('admin', 'parent')
+def marketplace():
+    orders = db_module.get_marketplace_orders(limit=300)
+    children = db_module.get_children()
+    return render_template(
+        'marketplace.html',
+        items=db_module.get_marketplace_items(),
+        children=children,
+        cash_balances={child['id']: db_module.get_cash_balance(child['id']) for child in children},
+        pending_orders=[order for order in orders if order['status'] == 'pending'],
+        approved_orders=[order for order in orders if order['status'] == 'approved'],
+        history=[order for order in orders if order['status'] not in ('pending', 'approved')],
+        categories=[
+            ('item', 'Item', 'bi-bag-fill'),
+            ('privilege', 'Privilege', 'bi-star-fill'),
+            ('screen_time', 'Screen time', 'bi-display'),
+        ],
+    )
+
+
+@app.route('/marketplace/items/add', methods=['POST'])
+@require_role('admin', 'parent')
+def marketplace_item_add():
+    try:
+        db_module.create_marketplace_item(
+            request.form.get('name', ''),
+            request.form.get('price', '0'),
+            category=request.form.get('category', 'item'),
+            description=request.form.get('description', ''),
+            stock_quantity=request.form.get('stock_quantity'),
+            icon=request.form.get('icon', 'bi-bag-fill'),
+            color=request.form.get('color', '#10b981'),
+            requires_approval=1 if request.form.get('requires_approval') else 0,
+            sort_order=request.form.get('sort_order', '0'),
+            currency_type=request.form.get('currency_type', 'token'),
+            token_price=request.form.get('token_price'),
+            cash_price=request.form.get('cash_price'),
+        )
+        flash('Marketplace item added.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('marketplace'))
+
+
+@app.route('/marketplace/items/<int:item_id>/update', methods=['POST'])
+@require_role('admin', 'parent')
+def marketplace_item_update(item_id):
+    try:
+        db_module.update_marketplace_item(
+            item_id,
+            request.form.get('name', ''),
+            request.form.get('price', '0'),
+            category=request.form.get('category', 'item'),
+            description=request.form.get('description', ''),
+            stock_quantity=request.form.get('stock_quantity'),
+            icon=request.form.get('icon', 'bi-bag-fill'),
+            color=request.form.get('color', '#10b981'),
+            requires_approval=1 if request.form.get('requires_approval') else 0,
+            sort_order=request.form.get('sort_order', '0'),
+            currency_type=request.form.get('currency_type', 'token'),
+            token_price=request.form.get('token_price'),
+            cash_price=request.form.get('cash_price'),
+        )
+        flash('Marketplace item updated.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('marketplace'))
+
+
+@app.route('/marketplace/cash/<int:child_id>', methods=['POST'])
+@require_role('admin', 'parent')
+def marketplace_cash_adjust(child_id):
+    try:
+        amount = db_module._marketplace_money(request.form.get('amount'), 'Cash amount')
+        direction = request.form.get('direction', 'add')
+        if direction not in ('add', 'remove'):
+            raise ValueError('Choose whether to add or remove cash.')
+        description = request.form.get('description', '').strip() or 'Marketplace cash adjustment'
+        db_module.adjust_cash_balance(
+            child_id, amount if direction == 'add' else -amount,
+            description=description, created_by=session.get('user_id')
+        )
+        flash('Cash balance updated.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('marketplace'))
+
+
+@app.route('/marketplace/items/<int:item_id>/toggle', methods=['POST'])
+@require_role('admin', 'parent')
+def marketplace_item_toggle(item_id):
+    item = db_module.get_marketplace_item(item_id)
+    if not item:
+        abort(404)
+    db_module.set_marketplace_item_active(item_id, not item['is_active'])
+    flash('Marketplace item availability updated.', 'info')
+    return redirect(url_for('marketplace'))
+
+
+@app.route('/marketplace/orders/<int:order_id>/approve', methods=['POST'])
+@require_role('admin', 'parent')
+def marketplace_order_approve(order_id):
+    try:
+        order = db_module.approve_marketplace_order(order_id, session.get('user_id'))
+        db_module.log_activity(
+            session.get('user_id'), 'marketplace_approve',
+            f"Approved marketplace order #{order_id} for {order['user_name']}"
+        )
+        flash('Order approved. The child can now show the QR code for collection.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(_safe_referrer('marketplace'))
+
+
+@app.route('/marketplace/orders/<int:order_id>/reject', methods=['POST'])
+@require_role('admin', 'parent')
+def marketplace_order_reject(order_id):
+    try:
+        order = db_module.reject_marketplace_order(
+            order_id, session.get('user_id'), request.form.get('reason', '')
+        )
+        db_module.log_activity(
+            session.get('user_id'), 'marketplace_reject',
+            f"Rejected marketplace order #{order_id} for {order['user_name']}"
+        )
+        flash('Order rejected, stock restored and the child refunded.', 'info')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(_safe_referrer('marketplace'))
+
+
+@app.route('/marketplace/orders/<int:order_id>/fulfill', methods=['POST'])
+@require_role('admin', 'parent')
+def marketplace_order_fulfill(order_id):
+    try:
+        order = db_module.fulfill_marketplace_order(order_id, session.get('user_id'))
+        db_module.log_activity(
+            session.get('user_id'), 'marketplace_fulfill',
+            f"Fulfilled marketplace order #{order_id} for {order['user_name']}"
+        )
+        flash('Order fulfilled. The redemption is complete.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(_safe_referrer('marketplace'))
+
+
+@app.route('/marketplace/verify', methods=['GET', 'POST'])
+@app.route('/marketplace/verify/<token>', methods=['GET'])
+@require_role('admin', 'parent')
+def marketplace_verify(token=None):
+    token = token or request.form.get('token') or request.args.get('token')
+    token = (token or '').strip()
+    if not token:
+        flash('Enter a redemption code or scan the child\'s QR code.', 'warning')
+        return redirect(url_for('marketplace'))
+    order = db_module.get_marketplace_order_by_token(token)
+    if not order:
+        flash('That redemption code was not found.', 'danger')
+        return redirect(url_for('marketplace'))
+    return render_template(
+        'marketplace_verify.html', order=order,
+        qr_data_uri=marketplace_qr_data_uri(order['qr_token']),
+    )
 
 
 # --- Kids management ---
@@ -640,8 +1855,10 @@ def add_kid():
     if not name:
         flash('First name is required.', 'danger')
         return redirect(url_for('manage_kids'))
-    if pin and (len(pin) < 4 or len(pin) > 6 or not pin.isdigit()):
-        flash('PIN must be 4 to 6 digits.', 'danger')
+    try:
+        pin = db_module.validate_pin(pin)
+    except ValueError as exc:
+        flash(str(exc), 'danger')
         return redirect(url_for('manage_kids'))
     db_module.create_user(name, None, None, role='child', pin=pin, photo_path=photo_path,
                           surname=surname, nickname=nickname, date_of_birth=date_of_birth,
@@ -658,6 +1875,7 @@ def edit_kid(kid_id):
     if not child or child['role'] != 'child':
         flash('Child not found.', 'danger')
         return redirect(url_for('manage_kids'))
+    achievement_badges = db_module.get_child_achievements(kid_id)
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         surname = request.form.get('surname', '').strip() or None
@@ -672,9 +1890,13 @@ def edit_kid(kid_id):
         updates = {'name': name, 'surname': surname, 'nickname': nickname,
                    'date_of_birth': date_of_birth, 'color': color, 'status': status,
                    'can_do_hard_chores': can_do_hard_chores}
-        if pin and (len(pin) < 4 or len(pin) > 6 or not pin.isdigit()):
-            flash('PIN must be 4 to 6 digits.', 'danger')
-            return render_template('edit_kid.html', child=child)
+        try:
+            pin = db_module.validate_pin(pin)
+        except ValueError as exc:
+            flash(str(exc), 'danger')
+            return render_template(
+                'edit_kid.html', child=child, achievement_badges=achievement_badges
+            )
         if pin:
             updates['pin'] = pin
         if photo and photo.filename:
@@ -689,16 +1911,20 @@ def edit_kid(kid_id):
         db_module.log_activity(session.get('user_id'), 'edit_child', f'Edited child: {name}')
         flash('Updated child profile.', 'success')
         return redirect(url_for('manage_kids'))
-    return render_template('edit_kid.html', child=child)
+    return render_template(
+        'edit_kid.html', child=child, achievement_badges=achievement_badges
+    )
 
 
 @app.route('/kids/<int:kid_id>/delete', methods=['POST'])
 @require_role('admin')
 def delete_kid(kid_id):
     child = db_module.get_user(kid_id)
+    if not child or child['role'] != 'child':
+        flash('Child not found.', 'danger')
+        return redirect(url_for('manage_kids'))
     db_module.delete_user(kid_id)
-    if child:
-        db_module.log_activity(session.get('user_id'), 'delete_child', f'Removed child: {child["name"]}')
+    db_module.log_activity(session.get('user_id'), 'delete_child', f'Removed child: {child["name"]}')
     flash('Child removed.', 'info')
     return redirect(url_for('manage_kids'))
 
@@ -706,9 +1932,15 @@ def delete_kid(kid_id):
 @app.route('/kids/<int:kid_id>/reset-pin', methods=['POST'])
 @require_role('admin')
 def reset_pin(kid_id):
+    child = db_module.get_user(kid_id)
+    if not child or child['role'] != 'child':
+        flash('Child not found.', 'danger')
+        return redirect(url_for('manage_kids'))
     new_pin = request.form.get('pin', '').strip() or None
-    if new_pin and (len(new_pin) < 4 or len(new_pin) > 6 or not new_pin.isdigit()):
-        flash('PIN must be 4 to 6 digits.', 'danger')
+    try:
+        new_pin = db_module.validate_pin(new_pin)
+    except ValueError as exc:
+        flash(str(exc), 'danger')
         return redirect(url_for('manage_kids'))
     db_module.set_pin(kid_id, new_pin)
     flash('PIN updated.', 'success')
@@ -941,11 +2173,16 @@ def add_parent():
     username = request.form.get('username', '').strip()
     password = request.form.get('password', '').strip()
     role = request.form.get('role', 'parent')
+    if role not in ('admin', 'parent'):
+        flash('Choose a valid staff role.', 'danger')
+        return redirect(url_for('manage_parents'))
     if not name or not username or not password:
         flash('All fields are required.', 'danger')
         return redirect(url_for('manage_parents'))
-    if len(password) < 10:
-        flash('Password must be at least 10 characters.', 'danger')
+    try:
+        db_module.validate_password(password)
+    except ValueError as exc:
+        flash(str(exc), 'danger')
         return redirect(url_for('manage_parents'))
     try:
         db_module.create_user(name, None, password, role=role, username=username)
@@ -960,7 +2197,10 @@ def add_parent():
 def delete_parent(parent_id):
     admin_count = len(db_module.get_all_users(role='admin'))
     user = db_module.get_user(parent_id)
-    if user and user['role'] == 'admin' and admin_count <= 1:
+    if not user or user['role'] not in ('admin', 'parent'):
+        flash('Staff user not found.', 'danger')
+        return redirect(url_for('manage_parents'))
+    if user['role'] == 'admin' and admin_count <= 1:
         flash('Cannot delete the last admin.', 'danger')
         return redirect(url_for('manage_parents'))
     db_module.delete_user(parent_id)
@@ -1140,9 +2380,15 @@ def network_qr():
 @app.route('/parents/<int:parent_id>/reset-password', methods=['POST'])
 @require_role('admin')
 def reset_password(parent_id):
+    user = db_module.get_user(parent_id)
+    if not user or user['role'] not in ('admin', 'parent'):
+        flash('Staff user not found.', 'danger')
+        return redirect(url_for('manage_parents'))
     password = request.form.get('password', '').strip()
-    if len(password) < 10:
-        flash('Password must be at least 10 characters.', 'danger')
+    try:
+        db_module.validate_password(password)
+    except ValueError as exc:
+        flash(str(exc), 'danger')
         return redirect(url_for('manage_parents'))
     db_module.set_password(parent_id, password)
     db_module.log_activity(session.get('user_id'), 'reset_password', f'Reset password for user {parent_id}')
@@ -1357,6 +2603,81 @@ def save_currency_logo(file):
 
 # --- Security & Remote Access ---
 
+def _security_audit_context():
+    admins = [
+        user for user in db_module.get_all_users('admin')
+        if user['is_active']
+    ]
+    admins_with_2fa = sum(
+        1 for admin in admins if db_module.get_totp_secret(admin['id'])
+    )
+    backup_dir = os.path.join(db_module.DATA_DIR, 'backups')
+    backup_count = 0
+    if os.path.isdir(backup_dir):
+        backup_count = len([
+            name for name in os.listdir(backup_dir)
+            if name.endswith('.db')
+        ])
+    data_dir_mode = None
+    try:
+        data_dir_mode = os.stat(db_module.DATA_DIR).st_mode & 0o777
+    except OSError:
+        pass
+    route_endpoints = {
+        rule.endpoint for rule in app.url_map.iter_rules()
+        if rule.endpoint != 'static'
+    }
+    csrf_exempt_endpoints = {
+        str(name).rsplit('.', 1)[-1].replace('_view', '')
+        for name in (getattr(csrf, '_exempt_views', ()) or ())
+    }
+    jinja_autoescape = app.jinja_env.autoescape
+    if not isinstance(jinja_autoescape, bool):
+        jinja_autoescape = bool(jinja_autoescape)
+    escaped = app.jinja_env.from_string('{{ probe }}').render(probe='<script>')
+    return {
+        'admin_count': len(admins),
+        'admins_with_2fa': admins_with_2fa,
+        'https': https_enabled(),
+        'remote_access': db_module.get_setting('remote_access_enabled', '0') == '1',
+        'csrf_enabled': app.config.get('WTF_CSRF_ENABLED', True),
+        'csrf_exempt_endpoints': csrf_exempt_endpoints,
+        'route_rules_complete': route_endpoints <= set(ROUTE_ACCESS),
+        'login_lockout_enabled': (
+            db_module.LOGIN_MAX_ATTEMPTS > 0 and db_module.LOGIN_LOCKOUT_MINUTES > 0
+        ),
+        'sql_parameter_probe': db_module.parameterized_query_probe(),
+        'jinja_autoescape': jinja_autoescape,
+        'xss_escape_probe': '<script>' not in escaped,
+        'security_headers': bool(security_audit.SECURITY_HEADERS),
+        'session_cookie_secure': app.config.get('SESSION_COOKIE_SECURE', False),
+        'session_cookie_httponly': app.config.get('SESSION_COOKIE_HTTPONLY', False),
+        'session_cookie_samesite': app.config.get('SESSION_COOKIE_SAMESITE', ''),
+        'secret_key_length': len(app.config.get('SECRET_KEY') or ''),
+        'backup_count': backup_count,
+        'snapshot_count': len(db_module.get_system_snapshots(limit=10000)),
+        'recent_failed_logins': db_module.get_failed_login_count(24),
+        'data_dir_mode': data_dir_mode,
+        'debug': bool(app.debug),
+        'update_status': db_module.get_setting('last_update_status', 'unknown'),
+    }
+
+
+@app.route('/security/vulnerabilities')
+@app.route('/security/audit')
+@require_role('admin')
+def security_audit_page():
+    context = _security_audit_context()
+    checks = security_audit.audit(context)
+    compliance = security_audit.compliance_registry(context)
+    return render_template(
+        'security_audit.html', checks=checks,
+        summary=security_audit.summary(checks),
+        compliance=compliance,
+        compliance_summary=security_audit.compliance_summary(compliance),
+    )
+
+
 @app.route('/security')
 @require_role('admin')
 def security_page():
@@ -1414,12 +2735,11 @@ def setup_2fa():
             db_module.add_backup_code(user['id'], code_hash)
         session.pop('totp_setup_secret', None)
         if session.get('pending_2fa_forced') and session.get('pending_2fa_user_id') == user['id']:
-            session.pop('pending_2fa_user_id', None)
-            session.pop('pending_2fa_forced', None)
+            _clear_auth_session()
             session['user_id'] = user['id']
             session['role'] = user['role']
             session['2fa_verified'] = True
-            db_module.log_login_attempt(two_factor_label(user), request.remote_addr or 'unknown', True, '2fa_setup_complete')
+            db_module.log_login_attempt(two_factor_label(user), client_ip(), True, '2fa_setup_complete')
         db_module.log_activity(user['id'], 'enable_2fa', 'Enabled 2FA')
         return render_template('setup_2fa.html', backup_codes=codes, success=True)
     if not secret:
@@ -1457,7 +2777,15 @@ def settings():
                 value = request.form.get(key, field['default']).strip()
                 if field['type'] == 'radio' and value not in [c['value'] for c in field['choices']]:
                     value = field['default']
-            db_module.set_setting(key, value)
+                if field['type'] == 'color':
+                    value = achievements.clean_color(value, default=field['default'])
+            if key in db_module.UI_LAYOUT_SETTINGS:
+                try:
+                    db_module.set_ui_layout_setting(key, value)
+                except ValueError:
+                    db_module.set_ui_layout_setting(key, field['default'])
+            else:
+                db_module.set_setting(key, value)
         # Stat icon customization
         for stat_key in ['stat_icon_earned', 'stat_icon_chores', 'stat_icon_progress']:
             emoji_val = request.form.get(f'{stat_key}_emoji', '').strip()
@@ -1667,6 +2995,234 @@ def check_update():
     return redirect(url_for('system_info'))
 
 
+# --- Snapshots & automated updates (Phase 15) ---
+
+@app.route('/system/snapshots')
+@require_role('admin')
+def snapshots_page():
+    return render_template(
+        'snapshots.html',
+        snapshots=db_module.get_system_snapshots(limit=100),
+        usage=db_module.get_snapshot_storage_usage(),
+        kinds=db_module.SNAPSHOT_KINDS,
+        last_check=db_module.get_setting('last_update_check', ''),
+        last_status=db_module.get_setting('last_update_status', 'unknown'),
+        last_message=db_module.get_setting('last_update_message', ''),
+        app_dir=APP_DIR,
+        auto_update_enabled=db_module.get_setting('auto_update_enabled', '1') == '1',
+    )
+
+
+@app.route('/system/snapshots/create', methods=['POST'])
+@require_role('admin')
+def snapshot_create():
+    try:
+        snapshot = db_module.create_system_snapshot(
+            request.form.get('label', ''),
+            kind=request.form.get('kind', 'manual'),
+            created_by=session.get('user_id'),
+            note=request.form.get('note', ''),
+        )
+        db_module.prune_system_snapshots(keep=30)
+        db_module.log_activity(
+            session.get('user_id'), 'create_snapshot',
+            f'Created snapshot: {snapshot["label"]}'
+        )
+        flash(f'Snapshot "{snapshot["label"]}" created.', 'success')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('snapshots_page'))
+
+
+@app.route('/system/snapshots/<int:snapshot_id>/restore', methods=['POST'])
+@require_role('admin')
+def snapshot_restore(snapshot_id):
+    try:
+        snapshot = db_module.restore_system_snapshot(
+            snapshot_id, created_by=session.get('user_id'), safety=True
+        )
+        db_module.log_activity(
+            session.get('user_id'), 'restore_snapshot',
+            f'Restored snapshot: {snapshot["label"]}'
+        )
+        flash(
+            f'Restored snapshot "{snapshot["label"]}". '
+            'A safety snapshot was taken first.',
+            'success'
+        )
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('snapshots_page'))
+
+
+@app.route('/system/snapshots/<int:snapshot_id>/delete', methods=['POST'])
+@require_role('admin')
+def snapshot_delete(snapshot_id):
+    try:
+        snapshot = db_module.delete_system_snapshot(snapshot_id)
+        db_module.log_activity(
+            session.get('user_id'), 'delete_snapshot',
+            f'Deleted snapshot: {snapshot["label"]}'
+        )
+        flash(f'Snapshot "{snapshot["label"]}" deleted.', 'info')
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+    return redirect(url_for('snapshots_page'))
+
+
+@app.route('/system/update/check', methods=['POST'])
+@require_role('admin')
+def update_check():
+    result = updater.check_for_updates(APP_DIR)
+    db_module.set_setting('last_update_check', result['checked_at'])
+    db_module.set_setting('last_update_status', result['status'])
+    db_module.set_setting('last_update_message', result['output'][:1000])
+    db_module.log_activity(
+        session.get('user_id'), 'check_update',
+        f"Update check: {result['status']}"
+    )
+    labels = {
+        'available': ('A new update is available.', 'info'),
+        'up_to_date': ('Chore Gremlin is up to date.', 'success'),
+        'error': ('Could not check for updates.', 'warning'),
+        'unknown': ('Update status could not be determined.', 'warning'),
+    }
+    message, category = labels.get(result['status'], labels['unknown'])
+    flash(message, category)
+    return redirect(url_for('snapshots_page'))
+
+
+@app.route('/system/update/apply', methods=['POST'])
+@require_role('admin')
+def update_apply():
+    try:
+        snapshot = db_module.create_system_snapshot(
+            label='Pre-update snapshot', kind='pre_update',
+            created_by=session.get('user_id'),
+            note='Created automatically before applying an update.',
+        )
+    except ValueError as exc:
+        flash(f'Could not create a safety snapshot: {exc}', 'danger')
+        return redirect(url_for('snapshots_page'))
+    result = updater.apply_update(APP_DIR)
+    db_module.set_setting('last_update_check', result['applied_at'])
+    db_module.set_setting('last_update_status', result['status'])
+    db_module.set_setting('last_update_message', result['output'][:1000])
+    db_module.log_activity(
+        session.get('user_id'), 'apply_update',
+        f"Applied update: {result['status']} (snapshot #{snapshot['id']})"
+    )
+    if result['status'] == 'updated':
+        flash(
+            'Update applied. Restart the service to load the new code. '
+            f'Rollback snapshot: {snapshot["label"]}.',
+            'success'
+        )
+    else:
+        flash(
+            f'Update failed. Rollback snapshot "{snapshot["label"]}" is available.',
+            'danger'
+        )
+    return redirect(url_for('snapshots_page'))
+
+
+# --- Release bundles & tagging (Phase 17) ---
+
+@app.route('/system/releases')
+@require_role('admin')
+def releases_page():
+    current = release.read_version(APP_DIR)
+    return render_template(
+        'releases.html',
+        current_version=current,
+        suggested={
+            'patch': release.bump_version(current, 'patch'),
+            'minor': release.bump_version(current, 'minor'),
+            'major': release.bump_version(current, 'major'),
+        },
+        bundles=release.list_bundles(RELEASE_DIR),
+        release_dir=RELEASE_DIR,
+        changelog=release.changelog_excerpt(APP_DIR),
+        last_status=db_module.get_setting('last_release_status', ''),
+        last_message=db_module.get_setting('last_release_message', ''),
+    )
+
+
+@app.route('/system/releases/build', methods=['POST'])
+@require_role('admin')
+def release_build():
+    version = request.form.get('version') or release.read_version(APP_DIR)
+    try:
+        bundle = release.build_bundle(
+            APP_DIR, version=version, out_dir=RELEASE_DIR,
+            notes=request.form.get('notes', '').strip() or None,
+        )
+        db_module.set_setting('last_release_status', 'built')
+        db_module.set_setting(
+            'last_release_message', f"{bundle['filename']} ({bundle['size_human']})"
+        )
+        db_module.log_activity(
+            session.get('user_id'), 'build_release',
+            f"Built release {bundle['tag']} ({bundle['size_human']})"
+        )
+        flash(
+            f'Release bundle {bundle["filename"]} built '
+            f'({bundle["size_human"]}, sha256 {bundle["checksum"][:12]}...).',
+            'success'
+        )
+    except (release.ReleaseError, OSError) as exc:
+        db_module.set_setting('last_release_status', 'error')
+        db_module.set_setting('last_release_message', str(exc))
+        flash(f'Could not build release: {exc}', 'danger')
+    return redirect(url_for('releases_page'))
+
+
+@app.route('/system/releases/tag', methods=['POST'])
+@require_role('admin')
+def release_tag():
+    version = request.form.get('version') or release.read_version(APP_DIR)
+    try:
+        result = release.tag_release(
+            APP_DIR, version,
+            message=request.form.get('message', '').strip() or None,
+        )
+    except release.ReleaseError as exc:
+        flash(str(exc), 'danger')
+        return redirect(url_for('releases_page'))
+    db_module.set_setting('last_release_status', result['status'])
+    db_module.set_setting(
+        'last_release_message', result['output'][:1000] or result['tag']
+    )
+    if result['status'] == 'tagged':
+        db_module.log_activity(
+            session.get('user_id'), 'tag_release',
+            f"Created release tag {result['tag']}"
+        )
+        flash(f'Created git tag {result["tag"]}. Push the tag to trigger CI.', 'success')
+    elif result['status'] == 'exists':
+        flash(f'Tag {result["tag"]} already exists.', 'warning')
+    else:
+        flash(
+            f'Could not tag {result["tag"]}: '
+            f'{result["output"] or "git is unavailable"}',
+            'danger'
+        )
+    return redirect(url_for('releases_page'))
+
+
+@app.route('/system/releases/download/<filename>')
+@require_role('admin')
+def release_download(filename):
+    if (not filename.endswith('.zip') or filename != os.path.basename(filename)):
+        abort(404)
+    path = os.path.abspath(os.path.join(RELEASE_DIR, filename))
+    if not path.startswith(os.path.abspath(RELEASE_DIR) + os.sep):
+        abort(404)
+    if not os.path.isfile(path):
+        abort(404)
+    return send_file(path, as_attachment=True, download_name=filename)
+
+
 # --- Chore Approval ---
 
 @app.route('/approvals')
@@ -1711,11 +3267,23 @@ def reject_chore(log_id):
 
 # --- Drop Chores ---
 
+def _drop_view(drop):
+    payload = dict(drop)
+    seconds_remaining = 0
+    if drop['expires_at']:
+        try:
+            seconds_remaining = max(0, int((clock.parse_utc(drop['expires_at']) - clock.utc_now()).total_seconds()))
+        except (TypeError, ValueError):
+            seconds_remaining = 0
+    payload['seconds_remaining'] = seconds_remaining
+    return payload
+
+
 @app.route('/drop-chores')
 @require_role('admin', 'parent')
 def manage_drop_chores():
     db_module.update_drop_chore_points()
-    drops = db_module.get_active_drop_chores()
+    drops = [_drop_view(drop) for drop in db_module.get_active_drop_chores()]
     return render_template('drop_chores.html', drops=drops)
 
 
@@ -1755,7 +3323,7 @@ def delete_drop_chore(drop_id):
 def kiosk_drop_chores():
     child = g.child
     db_module.update_drop_chore_points()
-    drops = db_module.get_active_drop_chores()
+    drops = [_drop_view(drop) for drop in db_module.get_active_drop_chores()]
     return render_template('kiosk_drop_chores.html', child=child, drops=drops)
 
 
@@ -1768,6 +3336,7 @@ def kiosk_claim_drop_chore(drop_id):
         db_module.create_payment(child['id'], drop['current_points'], ptype='earning',
                                 description=f"Drop chore: {drop['name']}",
                                 created_by=session.get('user_id'))
+        db_module.award_drop_xp(child['id'], drop)
         db_module.log_activity(child['id'], 'claim_drop_chore',
                               f"Claimed: {drop['name']} for {drop['current_points']} points")
         flash(f'You claimed {drop["name"]} and earned {drop["current_points"]}!', 'success')
@@ -1776,15 +3345,45 @@ def kiosk_claim_drop_chore(drop_id):
     return redirect(url_for('kiosk_drop_chores'))
 
 
-@app.route('/api/drop-chores')
+@app.route('/kiosk/drop-chores/<int:drop_id>/complete', methods=['POST'])
 @kiosk_mode()
+def kiosk_complete_drop_chore(drop_id):
+    child = g.child
+    try:
+        result = db_module.complete_assigned_drop_chore(drop_id, child['id'])
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'warning')
+        return redirect(url_for('child_chores'))
+    if not result:
+        hardware_beep('error')
+        flash('That drop chore is no longer assigned to you.', 'danger')
+        return redirect(url_for('child_chores'))
+    db_module.log_activity(
+        child['id'], 'complete_drop_chore',
+        f"Completed assigned drop chore: {result['drop']['name']}"
+    )
+    hardware_beep('success')
+    if result['log']:
+        flash('Great job! Your drop chore is waiting for a parent to approve it.', 'success')
+    else:
+        flash('Drop chore completed!', 'success')
+    return redirect(url_for('child_chores'))
+
+
+@app.route('/api/drop-chores')
 def api_drop_chores():
     db_module.update_drop_chore_points()
-    drops = db_module.get_active_drop_chores()
-    return jsonify([{
+    drops = [_drop_view(drop) for drop in db_module.get_active_drop_chores()]
+    response = jsonify([{
         'id': d['id'], 'name': d['name'], 'current_points': d['current_points'],
+        'initial_points': d['initial_points'], 'decay_per_minute': d['decay_per_minute'],
+        'posted_at': d['posted_at'], 'expires_at': d['expires_at'],
+        'seconds_remaining': d['seconds_remaining'],
         'chore_emoji': d['chore_emoji'], 'status': d['status']
     } for d in drops])
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 # --- Kiosk Calendar ---
@@ -1811,6 +3410,70 @@ def kiosk_add_event():
                           created_by=g.child['id'])
     flash('Event added to the family calendar.', 'success')
     return redirect(url_for('kiosk_calendar'))
+
+
+# --- Live SSE & push alerts (Phase 14) ---
+
+def _live_event_frame(row):
+    return events.format_sse({
+        'id': row.get('id', 0),
+        'type': row.get('event_type', 'message'),
+        'data': {
+            'id': row.get('id'),
+            'title': row.get('title', ''),
+            'body': row.get('body', ''),
+            'payload': row.get('payload', {}),
+            'user_id': row.get('user_id'),
+            'child_id': row.get('child_id'),
+            'created_at': row.get('created_at', ''),
+        },
+    })
+
+
+@app.route('/events/stream')
+def events_stream():
+    once = request.args.get('once') == '1'
+    since = request.args.get('since', 0, type=int) or 0
+
+    def generate():
+        yield 'retry: 3000\n\n'
+        yield events.format_sse({
+            'id': 0, 'type': 'ready',
+            'data': {'ok': True, 'latest_event_id': db_module.get_latest_live_event_id()},
+        })
+        for row in db_module.get_live_events(after_id=since, limit=25):
+            yield _live_event_frame(row)
+        if once:
+            return
+        audience = events.subscribe()
+        try:
+            while True:
+                try:
+                    event = audience.get(timeout=15)
+                except queue.Empty:
+                    yield ': heartbeat\n\n'
+                    continue
+                yield events.format_sse(event)
+        finally:
+            events.unsubscribe(audience)
+
+    response = Response(stream_with_context(generate()), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response
+
+
+@app.route('/api/alerts')
+def alerts_feed():
+    since = request.args.get('since', 0, type=int) or 0
+    broadcasts = [dict(row) for row in db_module.get_active_broadcasts(limit=20)]
+    live_events = db_module.get_live_events(after_id=since, limit=50)
+    return jsonify({
+        'broadcasts': broadcasts,
+        'events': live_events,
+        'latest_event_id': db_module.get_latest_live_event_id(),
+        'subscribers': events.subscriber_count(),
+    })
 
 
 # --- PWA ---

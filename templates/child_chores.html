@@ -24,6 +24,8 @@
           {% if my_earnings and my_earnings['total_earned'] > 0 %}
           | This month: {{ token(my_earnings['total_earned'], token_icon) }}
           {% endif %}
+          | <i class="bi bi-stars"></i> Level {{ rewards.stats['level'] }}
+          | <i class="bi bi-fire"></i> {{ rewards.stats['current_streak'] }} day streak
         </div>
       </div>
     </div>
@@ -32,28 +34,29 @@
     </a>
   </div>
 
-  <!-- Active chores -->
-  {% if active_logs %}
-  <div class="fh-active-section">
-    <h3 class="fh-section-title"><i class="bi bi-hourglass-split"></i> In Progress</h3>
-    <div class="fh-active-grid">
-      {% for log in active_logs %}
-      <div class="fh-active-card">
-        <div class="fh-active-icon"><i class="bi {{ log['chore_icon'] }}"></i></div>
-        <div class="fh-active-info">
-          <div class="fh-active-name">{{ log['chore_name'] }}</div>
-          <div class="fh-active-time" data-started="{{ log['started_at'] }}">
-            <i class="bi bi-clock"></i> <span class="fh-timer">0m 0s</span>
+  {% if assigned_drops %}
+  <div class="mt-4">
+    <h3 class="fh-section-title"><i class="bi bi-droplet-fill"></i> Assigned Drop Chores</h3>
+    <div class="fh-chore-grid">
+      {% for drop in assigned_drops %}
+      <div class="fh-chore-card fh-drop-card">
+        <form method="POST" action="{{ url_for('kiosk_complete_drop_chore', drop_id=drop['id']) }}" class="fh-chore-form">
+          <div class="fh-chore-icon">
+            {% if drop['chore_image'] %}
+            <img src="/static/{{ drop['chore_image'] }}" alt="" style="width:32px;height:32px;border-radius:8px;">
+            {% elif drop['chore_emoji'] %}
+            <span style="font-size:1.5rem;">{{ drop['chore_emoji'] }}</span>
+            {% else %}
+            <i class="bi bi-droplet-fill"></i>
+            {% endif %}
           </div>
-        </div>
-        <form method="POST" action="{{ url_for('kiosk_finish_chore', log_id=log['id']) }}" class="d-inline">
-          <button type="submit" class="btn fh-btn-success btn-sm">
-            <i class="bi bi-check-circle-fill"></i> Done!
-          </button>
-        </form>
-        <form method="POST" action="{{ url_for('kiosk_cancel_chore', log_id=log['id']) }}" class="d-inline">
-          <button type="submit" class="btn btn-sm fh-btn-cancel" title="Cancel">
-            <i class="bi bi-x-circle"></i>
+          <div class="fh-chore-name fh-drop-name">{{ drop['name'] }}</div>
+          <div class="fh-chore-solo"><i class="bi bi-person-check-fill"></i> Assigned to you</div>
+          <div class="fh-chore-pay">
+            <i class="bi bi-cash"></i> {{ token(drop['current_points'], token_icon) }}
+          </div>
+          <button type="submit" class="fh-chore-complete">
+            <i class="bi bi-check-circle-fill"></i> Complete
           </button>
         </form>
       </div>
@@ -67,6 +70,18 @@
     <div class="d-flex justify-content-between align-items-center mb-2">
       <h3 class="fh-section-title mb-0"><i class="bi bi-list-check"></i> Pick a Chore</h3>
       <div class="d-flex gap-2">
+        <a href="{{ url_for('kiosk_shop') }}" class="btn fh-btn-outline btn-sm">
+          <i class="bi bi-shop"></i> Shop
+        </a>
+        <a href="{{ url_for('kiosk_bank') }}" class="btn fh-btn-cyan btn-sm">
+          <i class="bi bi-bank"></i> Bank
+        </a>
+        <a href="{{ url_for('kiosk_bills') }}" class="btn fh-btn-outline btn-sm">
+          <i class="bi bi-receipt"></i> Bills
+        </a>
+        <a href="{{ url_for('kiosk_rewards') }}" class="btn fh-btn-success btn-sm">
+          <i class="bi bi-trophy-fill"></i> Rewards
+        </a>
         <a href="{{ url_for('kiosk_drop_chores') }}" class="btn fh-btn-cyan btn-sm">
           <i class="bi bi-droplet-fill"></i> Drop Chores
         </a>
@@ -78,38 +93,28 @@
     {% if chores %}
     <div class="fh-chore-grid">
       {% for chore in chores %}
-      {% set is_active = chore['id'] in active_ids %}
-      <div class="fh-chore-card {{ 'fh-chore-active' if is_active else '' }}" 
-           {% if not is_active %}data-href="{{ url_for('kiosk_start_chore', chore_id=chore['id']) }}"{% endif %}>
-        {% if not is_active %}
-        <form method="POST" action="{{ url_for('kiosk_start_chore', chore_id=chore['id']) }}" class="fh-chore-form">
-        {% endif %}
-        <div class="fh-chore-icon">
-          {% if chore['chore_image'] %}
-          <img src="{{ chore_image_url(chore['chore_image']) }}" alt="" style="width:32px;height:32px;border-radius:8px;">
-          {% elif chore['chore_emoji'] %}
-          <span style="font-size:1.5rem;">{{ chore['chore_emoji'] }}</span>
-          {% else %}
-          <i class="bi {{ chore['icon'] }}"></i>
+      <div class="fh-chore-card">
+        <form method="POST" action="{{ url_for('kiosk_complete_chore', chore_id=chore['id']) }}" class="fh-chore-form">
+          <div class="fh-chore-icon">
+            {% if chore['chore_image'] %}
+            <img src="{{ chore_image_url(chore['chore_image']) }}" alt="" style="width:32px;height:32px;border-radius:8px;">
+            {% elif chore['chore_emoji'] %}
+            <span style="font-size:1.5rem;">{{ chore['chore_emoji'] }}</span>
+            {% else %}
+            <i class="bi {{ chore['icon'] }}"></i>
+            {% endif %}
+          </div>
+          <div class="fh-chore-name">{{ chore['name'] }}</div>
+          <div class="fh-chore-pay">
+            <i class="bi bi-cash"></i> {{ token(chore['pay_amount'], token_icon) }}
+          </div>
+          {% if chore['single_child_only'] %}
+          <div class="fh-chore-solo"><i class="bi bi-people-fill"></i> Shared - first completion counts</div>
           {% endif %}
-        </div>
-        <div class="fh-chore-name">{{ chore['name'] }}</div>
-        <div class="fh-chore-pay">
-          <i class="bi bi-cash"></i> {{ token(chore['pay_amount'], token_icon) }}
-        </div>
-        {% if chore['single_child_only'] %}
-        <div class="fh-chore-solo"><i class="bi bi-person-lock"></i> One at a time</div>
-        {% endif %}
-        {% if is_active %}
-        <div class="fh-chore-active-time" data-started="{% for log in active_logs %}{% if log['chore_id'] == chore['id'] %}{{ log['started_at'] }}{% endif %}{% endfor %}">
-          <i class="bi bi-clock"></i> <span class="fh-timer">0m 0s</span>
-        </div>
-        {% else %}
-        <button type="submit" class="fh-chore-start">
-          <i class="bi bi-play-circle-fill"></i> Start
-        </button>
-        {% endif %}
-        {% if not is_active %}</form>{% endif %}
+          <button type="submit" class="fh-chore-complete">
+            <i class="bi bi-check-circle-fill"></i> Complete
+          </button>
+        </form>
       </div>
       {% endfor %}
     </div>
@@ -121,7 +126,4 @@
     {% endif %}
   </div>
 </div>
-{% endblock %}
-{% block scripts %}
-<script src="/static/js/kiosk-timer.js"></script>
 {% endblock %}

@@ -39,8 +39,8 @@
             <input type="date" name="date_of_birth" class="form-control fh-input" value="{{ child['date_of_birth'] or '' }}">
           </div>
           <div class="col-md-6">
-            <label class="fh-label">PIN (4-6 digits)</label>
-            <input type="text" name="pin" class="form-control fh-input" maxlength="6" pattern="[0-9]*" placeholder="{{ 'Leave blank to keep the current PIN' if child['pin'] else 'Leave empty for no PIN' }}">
+            <label class="fh-label">PIN (digits, any length)</label>
+            <input type="text" name="pin" class="form-control fh-input" maxlength="64" inputmode="numeric" pattern="[0-9]*" placeholder="{{ 'Leave blank to keep the current PIN' if child['pin'] else 'Leave empty for no PIN' }}">
           </div>
           <div class="col-md-6">
             <label class="fh-label">Theme Colour</label>
@@ -85,6 +85,51 @@
           <a href="{{ url_for('manage_kids') }}" class="btn fh-btn-outline">Cancel</a>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div class="fh-card mt-3">
+    <div class="fh-card-header">
+      <i class="bi bi-award-fill"></i> Achievement Badge Gallery
+      <span class="badge bg-success ms-auto">
+        {{ achievement_badges|selectattr('unlocked')|list|length }} / {{ achievement_badges|length }} unlocked
+      </span>
+    </div>
+    <div class="fh-card-body">
+      {% if achievement_badges %}
+      <div class="fh-reward-store">
+        {% for item in achievement_badges %}
+        <div class="fh-achievement-gallery-card {{ '' if item['unlocked'] else 'fh-achievement-locked' }}"
+             style="--badge-color: {{ item['color'] }};">
+          <div class="d-flex align-items-center gap-2">
+            <span class="fh-achievement-mini-icon"><i class="bi {{ item['icon'] }}"></i></span>
+            <div>
+              <div class="fw-semibold">{{ item['name'] }}</div>
+              <div class="fh-achievement-category">{{ item['category']|replace('_', ' ')|title }}</div>
+              <div class="small text-muted">{{ item['description'] }}</div>
+            </div>
+          </div>
+          <div class="small text-muted">{{ item['requirement'] }}</div>
+          <div class="progress fh-xp-progress">
+            <div class="progress-bar" style="width: {{ item['progress_percent'] }}%"></div>
+          </div>
+          <div class="d-flex justify-content-between small text-muted">
+            <span>{{ item['value_text'] }} / {{ item['target_text'] }}</span>
+            {% if item['unlocked'] %}
+            <span class="text-success"><i class="bi bi-check-circle-fill"></i> Unlocked</span>
+            {% else %}
+            <span>{{ item['remaining_text'] }} to go</span>
+            {% endif %}
+          </div>
+          {% if item['reward_type'] != 'none' %}
+          <div class="small text-cyan"><i class="bi bi-gift-fill"></i> {{ item['reward_label'] }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">No achievement definitions available.</p>
+      {% endif %}
     </div>
   </div>
 

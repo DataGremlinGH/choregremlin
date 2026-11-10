@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import nav %}
+{% block title %}Snapshots - {{ app_name }}{% endblock %}
+{% block body %}
+{{ nav(active='snapshots') }}
+<div class="fh-page fh-page--narrow">
+  <div class="fh-page-header">
+    <div>
+      <h2 class="fh-page-title"><i class="bi bi-clock-history"></i> Snapshots &amp; Updates</h2>
+      <p class="text-muted mb-0">Take a safe copy before changes, roll back instantly, and manage automated updates.</p>
+    </div>
+    <button class="btn fh-btn-cyan" data-bs-toggle="modal" data-bs-target="#createSnapshotModal">
+      <i class="bi bi-camera-fill"></i> New Snapshot
+    </button>
+  </div>
+
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-arrow-repeat"></i> Automated Updates</div>
+    <div class="fh-card-body">
+      <div class="d-flex flex-wrap gap-3 align-items-center mb-3">
+        <div>
+          <div class="text-muted small">Last check</div>
+          <div class="fw-semibold">{{ last_check|localtime if last_check else 'Never' }}</div>
+        </div>
+        <div>
+          <div class="text-muted small">Status</div>
+          <span class="badge bg-{{ 'success' if last_status == 'up_to_date' else ('info' if last_status == 'available' else ('danger' if last_status == 'error' else 'secondary')) }}">
+            {{ last_status|replace('_', ' ')|title }}
+          </span>
+        </div>
+        <div>
+          <div class="text-muted small">Auto-update setting</div>
+          <div class="fw-semibold">{{ 'Enabled' if auto_update_enabled else 'Disabled' }}</div>
+        </div>
+      </div>
+      {% if last_message %}
+      <pre class="small text-muted bg-body-tertiary rounded p-2 mb-3" style="white-space: pre-wrap;">{{ last_message }}</pre>
+      {% endif %}
+      <div class="d-flex gap-2 flex-wrap">
+        <form method="POST" action="{{ url_for('update_check') }}">
+          <button class="btn fh-btn-outline"><i class="bi bi-search"></i> Check for Updates</button>
+        </form>
+        <form method="POST" action="{{ url_for('update_apply') }}" onsubmit="return confirm('This pulls the latest code and takes a safety snapshot first. Continue?')">
+          <button class="btn fh-btn-cyan"><i class="bi bi-cloud-arrow-down-fill"></i> Apply Update</button>
+        </form>
+      </div>
+      <p class="text-muted small mt-3 mb-0">
+        The repository is <code>{{ app_dir }}</code>. Pull requests are made with <code>git pull --ff-only</code>.
+        Restart the service after a successful update so the new code loads.
+      </p>
+    </div>
+  </div>
+
+  <div class="fh-card">
+    <div class="fh-card-header d-flex justify-content-between align-items-center">
+      <span><i class="bi bi-archive-fill"></i> Stored Snapshots</span>
+      <span class="badge bg-secondary">{{ usage['count'] }} &middot; {{ usage['size_text'] }}</span>
+    </div>
+    <div class="fh-card-body">
+      <div class="table-responsive">
+        <table class="table fh-table fh-table-sm align-middle">
+          <thead>
+            <tr><th>Label</th><th>Type</th><th>Size</th><th>Created</th><th class="text-end">Actions</th></tr>
+          </thead>
+          <tbody>
+            {% for snapshot in snapshots %}
+            <tr>
+              <td>
+                <div class="fw-semibold">{{ snapshot['label'] }}</div>
+                {% if snapshot['note'] %}<div class="small text-muted">{{ snapshot['note'] }}</div>{% endif %}
+                {% if not snapshot['file_exists'] %}<span class="badge bg-danger">File missing</span>{% endif %}
+              </td>
+              <td><span class="badge bg-secondary">{{ snapshot['kind']|replace('_', ' ')|title }}</span></td>
+              <td class="text-muted">{{ snapshot['size_text'] }}</td>
+              <td class="small text-muted">{{ snapshot['created_at']|localtime }}</td>
+              <td class="text-end">
+                <div class="d-inline-flex gap-1">
+                  <form method="POST" action="{{ url_for('snapshot_restore', snapshot_id=snapshot['id']) }}" onsubmit="return confirm('Restore this snapshot? A safety snapshot will be taken first.')">
+                    <button class="btn btn-sm fh-btn-outline" title="Restore"><i class="bi bi-arrow-counterclockwise"></i></button>
+                  </form>
+                  <form method="POST" action="{{ url_for('snapshot_delete', snapshot_id=snapshot['id']) }}" onsubmit="return confirm('Delete this snapshot permanently?')">
+                    <button class="btn btn-sm fh-btn-danger" title="Delete"><i class="bi bi-trash"></i></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-4">No snapshots yet. Create one before your next update.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="createSnapshotModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content fh-modal">
+      <form method="POST" action="{{ url_for('snapshot_create') }}">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-camera-fill"></i> Create Snapshot</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <label class="fh-label">Label</label>
+          <input type="text" name="label" maxlength="120" class="form-control fh-input" placeholder="Before trying something new">
+          <label class="fh-label mt-3">Type</label>
+          <select name="kind" class="form-select fh-input">
+            {% for kind in kinds %}
+            <option value="{{ kind }}" {{ 'selected' if kind == 'manual' else '' }}>{{ kind|replace('_', ' ')|title }}</option>
+            {% endfor %}
+          </select>
+          <label class="fh-label mt-3">Note</label>
+          <textarea name="note" maxlength="500" rows="2" class="form-control fh-input" placeholder="Optional note"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan"><i class="bi bi-camera-fill"></i> Create Snapshot</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
