@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import nav %}
+{% from 'macros.html' import nav, token %}
 {% block title %}Kids - {{ app_name }}{% endblock %}
 {% block body %}
 {{ nav(active='kids') }}
@@ -55,6 +55,54 @@
       <p>No kids yet. Click "Add Kid" to get started.</p>
     </div>
     {% endfor %}
+  </div>
+
+  <div class="mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h3 class="fh-section-title mb-1"><i class="bi bi-calendar3"></i> Chores by Frequency</h3>
+        <p class="text-muted small mb-0">Active chores grouped by how often they repeat.</p>
+      </div>
+      <a href="{{ url_for('manage_chores') }}" class="btn btn-sm fh-btn-outline">
+        <i class="bi bi-list-check"></i> Manage Chores
+      </a>
+    </div>
+    {% if chore_groups %}
+    <div class="row g-3">
+      {% for group in chore_groups %}
+      <div class="col-12 col-lg-6">
+        <div class="fh-card h-100" data-repeat-frequency="{{ group.key }}">
+          <div class="fh-card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi {{ group.icon }}"></i> {{ group.label }}</span>
+            <span class="badge bg-secondary">{{ group.chores|length }}</span>
+          </div>
+          <div class="fh-card-body">
+            <div class="d-flex flex-column gap-3">
+              {% for chore in group.chores %}
+              <div class="d-flex justify-content-between align-items-start gap-3">
+                <div>
+                  <div class="fw-semibold">{{ chore.name }}</div>
+                  {% if group.key == 'set_days' and chore.due_day_labels %}
+                  <div class="text-muted small"><i class="bi bi-calendar-check"></i> {{ chore.due_day_labels|join(', ') }}</div>
+                  {% elif chore.description %}
+                  <div class="text-muted small">{{ chore.description }}</div>
+                  {% endif %}
+                </div>
+                <span class="badge fh-status-badge">{{ token(chore.pay_amount, token_icon) }}</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">
+      <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>
+      <p class="mb-0">No active chores yet. Add one from Manage Chores.</p>
+    </div>
+    {% endif %}
   </div>
 </div>
 

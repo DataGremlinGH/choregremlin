@@ -1910,11 +1910,66 @@ def marketplace_verify(token=None):
 
 # --- Kids management ---
 
+CHORE_FREQUENCY_GROUPS = [
+    ('daily', 'Daily', 'bi-sun-fill'),
+    ('weekly', 'Weekly', 'bi-calendar-week-fill'),
+    ('monthly', 'Monthly', 'bi-calendar-month-fill'),
+    ('weekend', 'Weekend', 'bi-calendar-heart-fill'),
+    ('set_days', 'Set Days', 'bi-calendar-check-fill'),
+    ('weekdays', 'Weekdays', 'bi-calendar-range-fill'),
+    ('once', 'One-time', 'bi-calendar-event-fill'),
+]
+CHORE_FREQUENCY_ALIASES = {
+    'daily': 'daily',
+    'weekly': 'weekly',
+    'monthly': 'monthly',
+    'weekend': 'weekend',
+    'weekends': 'weekend',
+    'set_days': 'set_days',
+    'set days': 'set_days',
+    'custom': 'set_days',
+    'weekdays': 'weekdays',
+    'once': 'once',
+}
+CHORE_DAY_LABELS = {
+    '0': 'Mon', '1': 'Tue', '2': 'Wed', '3': 'Thu',
+    '4': 'Fri', '5': 'Sat', '6': 'Sun',
+}
+
+
+def group_chores_by_frequency(chores):
+    groups = {
+        key: {'key': key, 'label': label, 'icon': icon, 'chores': []}
+        for key, label, icon in CHORE_FREQUENCY_GROUPS
+    }
+    order = [key for key, _label, _icon in CHORE_FREQUENCY_GROUPS]
+    for row in chores:
+        chore = dict(row)
+        raw = str(chore.get('repeat_frequency') or 'daily').strip().lower()
+        key = CHORE_FREQUENCY_ALIASES.get(raw, raw.replace(' ', '_'))
+        if key not in groups:
+            groups[key] = {
+                'key': key,
+                'label': raw.replace('_', ' ').title() or 'Other',
+                'icon': 'bi-calendar3',
+                'chores': [],
+            }
+            order.append(key)
+        chore['due_day_labels'] = [
+            CHORE_DAY_LABELS[day.strip()]
+            for day in str(chore.get('due_days') or '').split(',')
+            if day.strip() in CHORE_DAY_LABELS
+        ]
+        groups[key]['chores'].append(chore)
+    return [groups[key] for key in order if groups[key]['chores']]
+
+
 @app.route('/kids')
 @require_role('admin', 'parent')
 def manage_kids():
     children = db_module.get_children()
-    return render_template('kids.html', children=children)
+    chore_groups = group_chores_by_frequency(db_module.get_all_chores(active_only=True))
+    return render_template('kids.html', children=children, chore_groups=chore_groups)
 
 
 @app.route('/kids/add', methods=['POST'])
