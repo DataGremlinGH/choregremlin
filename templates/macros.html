@@ -148,7 +148,7 @@
 {% if field.type == 'text' %}
 <div class="mb-3">
   <label class="fh-label">{{ field.label }}</label>
-  <input type="text" name="{{ field.key }}" class="form-control fh-input" value="{{ value }}" required>
+  <input type="text" name="{{ field.key }}" class="form-control fh-input" value="{{ value }}"{% if field.get('required', True) %} required{% endif %}>
   <div class="form-text">{{ field.help }}</div>
 </div>
 {% elif field.type == 'color' %}

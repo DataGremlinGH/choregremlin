@@ -1,5 +1,5 @@
 // Chore Gremlin Service Worker
-const CACHE_NAME = 'choregremlin-v5';
+const CACHE_NAME = 'choregremlin-v6';
 const STATIC_ASSETS = [
   '/',
   '/static/css/bootstrap.min.css',
@@ -8,6 +8,7 @@ const STATIC_ASSETS = [
   '/static/js/bootstrap.bundle.min.js',
   '/static/js/family-hub.js',
   '/static/js/live-alerts.js',
+  '/static/js/kid-ticker.js',
   '/static/js/drop-chores.js',
   '/manifest.json',
 ];

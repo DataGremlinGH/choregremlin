@@ -52,6 +52,12 @@ SETTINGS = [
     {'key': 'auto_update_enabled', 'type': 'toggle', 'default': '1', 'label': 'Enable Auto-Update',
      'icon': 'bi-arrow-repeat',
      'help': 'When enabled, the app checks for updates every hour and installs them automatically. Requires deployment via git on the Pi.'},
+    {'key': 'mobile_notifications_enabled', 'type': 'toggle', 'default': '1', 'label': 'Mobile Notifications',
+     'icon': 'bi-phone-vibrate',
+     'help': 'Send device notifications for new calendar events, drop chores and family alerts. In-app tickers and toasts always remain visible.'},
+    {'key': 'notification_webhook_url', 'type': 'text', 'default': '', 'required': False,
+     'label': 'Notification Webhook (optional)',
+     'help': 'POST JSON alerts to a webhook or Telegram relay. Leave blank to use in-app and browser notifications only.'},
 ]
 
 NAV_ITEMS = [

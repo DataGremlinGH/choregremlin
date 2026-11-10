@@ -17,6 +17,7 @@ import banking
 import billing
 import achievements
 import reporting
+import notifications
 from hardware import normalize_tag
 
 _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -3646,7 +3647,8 @@ def _grant_achievement_xp(user_id, xp_amount, unlock_id):
 
 def create_broadcast_alert(title, body='', kind='general', child_id=None,
                            achievement_key=None, icon='bi-megaphone-fill',
-                           color='#10b981', created_by=None, expires_at=None):
+                           color='#10b981', created_by=None, expires_at=None,
+                           url='/'):
     title = (title or '').strip()
     if not title:
         raise ValueError('Broadcast title is required.')
@@ -3685,10 +3687,15 @@ def create_broadcast_alert(title, body='', kind='general', child_id=None,
         payload={
             'id': broadcast['id'], 'kind': kind, 'child_id': child_id,
             'achievement_key': achievement_key, 'icon': icon, 'color': color,
-            'expires_at': expires_at,
+            'expires_at': expires_at, 'url': url or '/',
         },
         user_id=created_by, child_id=child_id,
     )
+    if get_notifications_enabled():
+        notifications.send_webhook(
+            get_setting('notification_webhook_url', ''),
+            title, body, kind=kind, target_url=url or '/',
+        )
     return broadcast
 
 
@@ -4285,6 +4292,19 @@ def set_setting(key, value):
     db.commit()
 
 
+def get_notifications_enabled():
+    value = get_setting('notifications_enabled')
+    if value is None:
+        value = get_setting('mobile_notifications_enabled', '1')
+    return value == '1'
+
+
+def set_notifications_enabled(enabled):
+    value = '1' if enabled else '0'
+    set_setting('notifications_enabled', value)
+    set_setting('mobile_notifications_enabled', value)
+
+
 # --- Family notice helpers ---
 
 def create_notice(title, body='', created_by=None, expires_at=None):
@@ -4328,7 +4348,17 @@ def create_event(title, event_date, description='', event_time=None, created_by=
         (title, description, event_date, event_time, created_by)
     )
     db.commit()
-    return cursor.lastrowid
+    event_id = cursor.lastrowid
+    when = f'{event_date} at {event_time}' if event_time else event_date
+    body = f'{title} on {when}'
+    if description:
+        body = f'{body} - {description}'
+    create_broadcast_alert(
+        'New calendar event', body, kind='general',
+        icon='bi-calendar-event-fill', color='#22d3ee',
+        created_by=created_by, url='/kiosk/calendar',
+    )
+    return event_id
 
 
 def get_upcoming_events(limit=10):
@@ -4504,7 +4534,31 @@ def create_drop_chore(name, initial_points, decay_per_minute, chore_id=None,
          decay_per_minute, expires_at, created_by)
     )
     db.commit()
-    return cursor.lastrowid
+    drop_id = cursor.lastrowid
+    create_broadcast_alert(
+        f'New drop chore: {name}',
+        f'{initial_points:g} points available now. Grab it before it drops to zero!',
+        kind='general', icon='bi-droplet-fill', color='#0ea5e9',
+        created_by=created_by, url='/kiosk/drop-chores',
+    )
+    return drop_id
+
+
+def get_all_drop_chores(limit=200):
+    return get_db().execute(
+        """SELECT d.*, u.name AS assigned_name, u.color AS assigned_color
+           FROM drop_chores d
+           LEFT JOIN users u ON d.assigned_to=u.id
+           ORDER BY CASE d.status
+                      WHEN 'available' THEN 0
+                      WHEN 'assigned' THEN 1
+                      WHEN 'claimed' THEN 2
+                      ELSE 3
+                    END,
+                    d.posted_at DESC, d.id DESC
+           LIMIT ?""",
+        (max(1, int(limit)),)
+    ).fetchall()
 
 
 def get_active_drop_chores():
@@ -4634,15 +4688,25 @@ def update_drop_chore_points():
             f"{result['name']} was assigned to you after the {reason}.",
             kind='general', child_id=result['assigned_to'],
             icon='bi-droplet-fill', color='#f59e0b',
-            created_by=result['created_by']
+            created_by=result['created_by'], url='/kiosk/chores'
         )
     return results
 
 
 def delete_drop_chore(drop_id):
     db = get_db()
-    db.execute("DELETE FROM drop_chores WHERE id=?", (drop_id,))
+    drop = db.execute("SELECT * FROM drop_chores WHERE id=?", (drop_id,)).fetchone()
+    if not drop:
+        return False
+    if drop['chore_id'] and drop['assigned_to']:
+        db.execute(
+            """DELETE FROM chore_assignments
+               WHERE chore_id=? AND user_id=? AND day_of_week IS NULL""",
+            (drop['chore_id'], drop['assigned_to']),
+        )
+    cursor = db.execute("DELETE FROM drop_chores WHERE id=?", (drop_id,))
     db.commit()
+    return cursor.rowcount > 0
 
 
 # --- Financial reporting helpers (Phase 13) ---

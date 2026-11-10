@@ -9,6 +9,23 @@
   </div>
   <h2 class="fh-page-title mb-4"><i class="bi bi-pencil-square"></i> Edit {{ child['name'] }}</h2>
 
+  {% set unlocked_achievements = achievement_badges|selectattr('unlocked')|list %}
+  <div class="fh-kid-badge-shelf mb-3" aria-label="Unlocked badges">
+    <div class="fh-kid-badge-shelf-head">
+      <span class="fh-kid-badge-shelf-title"><i class="bi bi-award-fill"></i> Unlocked Badges</span>
+      <span class="fh-kid-badge-shelf-count">{{ unlocked_achievements|length }} / {{ achievement_badges|length }}</span>
+    </div>
+    <div class="fh-kid-badge-shelf-list">
+      {% for item in unlocked_achievements %}
+      <span class="fh-kid-badge-chip" style="--badge-color: {{ item['color'] }};" title="{{ item['description'] }}">
+        <i class="bi {{ item['icon'] }}"></i> {{ item['name'] }}
+      </span>
+      {% else %}
+      <span class="fh-kid-badge-empty"><i class="bi bi-stars"></i> No badges unlocked yet.</span>
+      {% endfor %}
+    </div>
+  </div>
+
   <div class="fh-card">
     <div class="fh-card-body">
       <form method="POST" action="{{ url_for('edit_kid', kid_id=child['id']) }}" enctype="multipart/form-data">

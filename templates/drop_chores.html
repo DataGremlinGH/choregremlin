@@ -17,10 +17,12 @@
 
   <div class="row g-3">
     {% for drop in drops %}
-    <div class="col-12 col-sm-6 col-lg-4 drop-item" data-drop-id="{{ drop['id'] }}"
+    {% set is_available = drop['status'] == 'available' %}
+    <div class="col-12 col-sm-6 col-lg-4 {{ 'drop-item' if is_available else '' }}"
+         {% if is_available %}data-drop-id="{{ drop['id'] }}"
          data-drop-seconds="{{ drop['seconds_remaining'] }}"
          data-drop-current="{{ drop['current_points'] }}"
-         data-drop-decay="{{ drop['decay_per_minute'] }}">
+         data-drop-decay="{{ drop['decay_per_minute'] }}"{% endif %}>
       <div class="fh-card fh-drop-card">
         <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
           <div class="fh-chore-icon">
@@ -32,16 +34,25 @@
             <i class="bi bi-droplet-fill"></i>
             {% endif %}
           </div>
-          <span class="badge bg-success fs-6 d-inline-flex align-items-center gap-1 flex-shrink-0">
-            {{ token_icon }} <span data-drop-points>{{ "%.2f"|format(drop['current_points']) }}</span>
-          </span>
+          <div class="d-flex flex-column align-items-end gap-1">
+            <span class="badge {{ 'bg-success' if is_available else ('bg-warning text-dark' if drop['status'] == 'assigned' else 'bg-secondary') }}">
+              {{ drop['status']|title }}
+            </span>
+            <span class="badge bg-success fs-6 d-inline-flex align-items-center gap-1">
+              {{ token_icon }} <span data-drop-points>{{ "%.2f"|format(drop['current_points']) }}</span>
+            </span>
+          </div>
         </div>
         <h6 class="fh-drop-name">{{ drop['name'] }}</h6>
         <div class="text-muted small mb-2 fh-drop-meta">
+          {% if is_available %}
           <div class="fh-drop-countdown">
             <i class="bi bi-hourglass-split"></i>
             <span data-drop-countdown>{{ '%02d:%02d'|format(drop['seconds_remaining'] // 60, drop['seconds_remaining'] % 60) }}</span>
           </div>
+          {% elif drop['assigned_name'] %}
+          <div><i class="bi bi-person-check-fill"></i> Assigned to {{ drop['assigned_name'] }}</div>
+          {% endif %}
           Started: {{ drop['posted_at']|localtime }}<br>
           Decay: {{ drop['decay_per_minute'] }} {{ token_plural }}/min<br>
           {% if drop['expires_at'] %}Expires: {{ drop['expires_at']|localtime }}{% endif %}

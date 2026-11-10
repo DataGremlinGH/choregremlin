@@ -6,10 +6,20 @@
 <div class="fh-page">
   <div class="fh-page-header">
     <h2 class="fh-page-title"><i class="bi bi-speedometer2"></i> Dashboard</h2>
-    <form method="GET" class="d-flex align-items-center gap-2 flex-wrap">
-      <label class="fh-label mb-0">Month</label>
-      <input type="month" name="month" value="{{ selected_month }}" class="form-control fh-input-auto" onchange="this.form.submit()">
-    </form>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <form method="POST" action="{{ url_for('toggle_mobile_notifications') }}">
+        <input type="hidden" name="enabled" value="{{ '0' if notifications_enabled else '1' }}">
+        <button type="submit" class="btn btn-sm {{ 'fh-btn-success' if notifications_enabled else 'fh-btn-outline' }}"
+                title="Toggle mobile notifications">
+          <i class="bi {{ 'bi-bell-fill' if notifications_enabled else 'bi-bell-slash' }}"></i>
+          Mobile alerts {{ 'on' if notifications_enabled else 'off' }}
+        </button>
+      </form>
+      <form method="GET" class="d-flex align-items-center gap-2 flex-wrap">
+        <label class="fh-label mb-0">Month</label>
+        <input type="month" name="month" value="{{ selected_month }}" class="form-control fh-input-auto" onchange="this.form.submit()">
+      </form>
+    </div>
   </div>
 
   <!-- Stats -->

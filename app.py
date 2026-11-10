@@ -449,6 +449,7 @@ def inject_globals():
         'wallpaper': '',
         'data_dir': db_module.DATA_DIR,
         'latest_broadcast': None,
+        'notifications_enabled': True,
     }
     try:
         currency = db_module.get_currency_settings()
@@ -482,6 +483,7 @@ def inject_globals():
             'button_theme': ui_layout['button_theme'],
             'wallpaper': db_module.get_setting('wallpaper', ''),
             'latest_broadcast': db_module.get_latest_active_broadcast(),
+            'notifications_enabled': db_module.get_notifications_enabled(),
         })
     except Exception as exc:
         app.logger.warning('Using fallback template globals: %s', exc)
@@ -538,6 +540,7 @@ STAFF_ENDPOINTS = {
     'achievement_broadcast_delete', 'reports_page', 'reports_export',
     'approvals', 'approve_chore', 'reject_chore',
     'manage_drop_chores', 'add_drop_chore', 'delete_drop_chore',
+    'toggle_mobile_notifications',
 }
 TWO_FACTOR_ENDPOINTS = {'setup_2fa', 'disable_2fa'}
 LIVE_ENDPOINTS = {'events_stream', 'alerts_feed', 'api_drop_chores'}
@@ -1139,7 +1142,30 @@ def dashboard():
     return render_template('dashboard.html', children=children, earnings=earnings,
                            total_earned=total_earned, chore_count=chore_count,
                            pending_approvals=pending_approvals, selected_month=month,
-                           stat_icons=stat_icons)
+                           stat_icons=stat_icons,
+                           notifications_enabled=db_module.get_notifications_enabled())
+
+
+@app.route('/dashboard/notifications', methods=['POST'])
+@require_role('admin', 'parent')
+def toggle_mobile_notifications():
+    requested = request.form.get(
+        'enabled', request.form.get('mobile_notifications', '')
+    )
+    enabled = '1' if str(requested).lower() in {'1', 'on', 'true', 'yes'} else '0'
+    db_module.set_notifications_enabled(enabled == '1')
+    db_module.log_activity(
+        session.get('user_id'), 'toggle_notifications',
+        f'Mobile notifications {"enabled" if enabled == "1" else "disabled"}'
+    )
+    flash(
+        f'Mobile notifications {"enabled" if enabled == "1" else "disabled"}.',
+        'success'
+    )
+    destination = request.form.get('next', '')
+    if destination in {'dashboard', 'family_dashboard'}:
+        return redirect(url_for(destination))
+    return redirect(url_for('dashboard'))
 
 
 @app.route('/family')
@@ -2837,6 +2863,8 @@ def settings():
                     db_module.set_ui_layout_setting(key, field['default'])
             else:
                 db_module.set_setting(key, value)
+                if key == 'mobile_notifications_enabled':
+                    db_module.set_setting('notifications_enabled', value)
         # Stat icon customization
         for stat_key in ['stat_icon_earned', 'stat_icon_chores', 'stat_icon_progress']:
             emoji_val = request.form.get(f'{stat_key}_emoji', '').strip()
@@ -3334,7 +3362,7 @@ def _drop_view(drop):
 @require_role('admin', 'parent')
 def manage_drop_chores():
     db_module.update_drop_chore_points()
-    drops = [_drop_view(drop) for drop in db_module.get_active_drop_chores()]
+    drops = [_drop_view(drop) for drop in db_module.get_all_drop_chores()]
     return render_template('drop_chores.html', drops=drops)
 
 
@@ -3364,8 +3392,14 @@ def add_drop_chore():
 @app.route('/drop-chores/<int:drop_id>/delete', methods=['POST'])
 @require_role('admin', 'parent')
 def delete_drop_chore(drop_id):
-    db_module.delete_drop_chore(drop_id)
-    flash('Drop chore removed.', 'info')
+    if db_module.delete_drop_chore(drop_id):
+        db_module.log_activity(
+            session.get('user_id'), 'delete_drop_chore',
+            f'Removed drop chore #{drop_id}'
+        )
+        flash('Drop chore removed.', 'info')
+    else:
+        flash('Drop chore not found.', 'danger')
     return redirect(url_for('manage_drop_chores'))
 
 

@@ -6,6 +6,19 @@
 <div class="fh-bg" style="background-image: url('/static/{{ child['wallpaper'] }}'); background-size: cover; background-position: center; opacity: 0.12; position: fixed; inset: 0; z-index: -1;"></div>
 {% endif %}
 <div class="fh-kiosk-screen">
+  <div class="fh-alert-ticker" data-fh-alert-ticker data-feed-url="{{ url_for('alerts_feed') }}" role="status" aria-live="polite">
+    <span class="fh-alert-ticker-label"><i class="bi bi-broadcast"></i> Alerts</span>
+    <div class="fh-alert-ticker-track">
+      <div class="fh-alert-ticker-content" data-fh-ticker-content>
+        {% if latest_broadcast %}
+        <span class="fh-alert-ticker-item">{{ latest_broadcast['title'] }}{% if latest_broadcast['body'] %} &mdash; {{ latest_broadcast['body'] }}{% endif %}</span>
+        {% else %}
+        <span class="fh-alert-ticker-item">Family alerts will appear here.</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   <!-- Header -->
   <div class="fh-kiosk-header">
     <div class="d-flex align-items-center gap-3">
@@ -32,6 +45,30 @@
     <a href="{{ url_for('kiosk_child_logout') }}" class="btn btn-sm fh-btn-outline">
       <i class="bi bi-box-arrow-right"></i> Done
     </a>
+  </div>
+
+  {% set unlocked_achievements = rewards.achievement_badges|selectattr('unlocked')|list %}
+  <div class="fh-kid-badge-shelf mb-3" aria-label="Badge collection">
+    <div class="fh-kid-badge-shelf-head">
+      <span class="fh-kid-badge-shelf-title"><i class="bi bi-award-fill"></i> Trophy Case</span>
+      <span class="fh-kid-badge-shelf-count">{{ rewards.achievement_summary['unlocked'] }} / {{ rewards.achievement_summary['total'] }}</span>
+    </div>
+    <div class="fh-kid-badge-shelf-list">
+      {% if rewards.equipped_badge %}
+      <span class="fh-kid-badge-chip" title="Equipped title badge">
+        <i class="bi {{ rewards.equipped_badge['icon'] }}"></i> {{ rewards.equipped_badge['name'] }}
+      </span>
+      {% endif %}
+      {% for item in unlocked_achievements %}
+      <span class="fh-kid-badge-chip" style="--badge-color: {{ item['color'] }};" title="{{ item['description'] }}">
+        <i class="bi {{ item['icon'] }}"></i> {{ item['name'] }}
+      </span>
+      {% else %}
+      {% if not rewards.equipped_badge %}
+      <span class="fh-kid-badge-empty"><i class="bi bi-stars"></i> Complete chores to unlock your first badge.</span>
+      {% endif %}
+      {% endfor %}
+    </div>
   </div>
 
   {% if assigned_drops %}
@@ -126,4 +163,5 @@
     {% endif %}
   </div>
 </div>
+<script src="/static/js/kid-ticker.js"></script>
 {% endblock %}

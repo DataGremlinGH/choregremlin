@@ -5,7 +5,12 @@
   let lastEventId = 0;
   let permissionAsked = false;
 
+  function notificationsEnabled() {
+    return window.fhNotificationsEnabled !== false;
+  }
+
   function notify(title, body, data) {
+    if (!notificationsEnabled()) return;
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
     try {
@@ -15,7 +20,12 @@
         tag: 'choregremlin-' + (data && data.id ? data.id : Date.now()),
       });
       notification.onclick = () => {
-        window.focus();
+        const target = data && data.payload && data.payload.url;
+        if (target) {
+          window.location.href = target;
+        } else {
+          window.focus();
+        }
         notification.close();
       };
     } catch (e) {
@@ -90,7 +100,7 @@
   }
 
   document.addEventListener('click', () => {
-    if (permissionAsked) return;
+    if (permissionAsked || !notificationsEnabled()) return;
     permissionAsked = true;
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
