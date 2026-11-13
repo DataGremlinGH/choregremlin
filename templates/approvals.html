@@ -33,7 +33,10 @@
           <div class="fh-approval-chore">
             <div class="fh-approval-chore-icon"><i class="bi {{ log['chore_icon'] }}"></i></div>
             <div class="flex-fill">
-              <div class="fh-approval-chore-name">{{ log['chore_name'] }}</div>
+              <div class="fh-approval-chore-name">
+                {{ log['chore_name'] }}
+                {% if log['is_extra'] %}<span class="badge bg-info ms-1">Extra</span>{% endif %}
+              </div>
               <div class="fh-approval-chore-pay text-success">{{ token(log['earned_amount'], token_icon) }}</div>
             </div>
           </div>

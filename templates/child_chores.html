@@ -106,7 +106,10 @@
   <div class="mt-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <h3 class="fh-section-title mb-0"><i class="bi bi-list-check"></i> Pick a Chore</h3>
-      <div class="d-flex gap-2">
+      <div class="fh-action-scroll">
+        <button type="button" class="btn fh-btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#extraChoreModal">
+          <i class="bi bi-plus-circle-fill"></i> Extra Chores
+        </button>
         <a href="{{ url_for('kiosk_shop') }}" class="btn fh-btn-outline btn-sm">
           <i class="bi bi-shop"></i> Shop
         </a>
@@ -176,5 +179,34 @@
     {% endif %}
   </div>
 </div>
+
+<!-- Request Extra Chore Modal -->
+<div class="modal fade" id="extraChoreModal" tabindex="-1" aria-labelledby="extraChoreModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title" id="extraChoreModalLabel"><i class="bi bi-plus-circle-fill"></i> Request Extra Chore</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Pick a chore you have already finished for this cycle. It is logged as an
+          independent extra, so your regular schedule stays exactly the same. A
+          parent will approve the separate payout.
+        </p>
+        <div id="extraChoreBody" data-options-url="{{ url_for('kiosk_extra_chore_options') }}">
+          <div class="text-center text-muted py-4">
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            Loading extra chores...
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer fh-modal-footer">
+        <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/static/js/extra-chores.js"></script>
 <script src="/static/js/kid-ticker.js"></script>
 {% endblock %}
