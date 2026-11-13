@@ -1,5 +1,6 @@
 """Tests for the v2.1.0 extra-chore request workflow."""
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,58 @@ os.environ.setdefault('SECRET_KEY', 'extra-chores-test-secret-key-not-for-produc
 
 import db as db_module  # noqa: E402
 import app as app_module  # noqa: E402
+
+
+class ExtraChoreMigrationTests(unittest.TestCase):
+    def test_legacy_database_gains_is_extra_column_without_data_loss(self):
+        with tempfile.TemporaryDirectory(prefix='cg-legacy-db-') as tmp:
+            legacy_path = os.path.join(tmp, 'legacy.db')
+            conn = sqlite3.connect(legacy_path)
+            conn.executescript(db_module.SCHEMA)
+            conn.execute(
+                "INSERT INTO users (name, role) VALUES ('Legacy Child', 'child')"
+            )
+            conn.execute(
+                """INSERT INTO chores (name, icon, pay_amount)
+                   VALUES ('Legacy Chore', 'bi-star', 2.5)"""
+            )
+            conn.execute(
+                """INSERT INTO chore_logs
+                   (user_id, chore_id, status, finished_at, earned_amount)
+                   VALUES (1, 1, 'completed', '2026-01-01 00:00:00', 2.5)"""
+            )
+            # Simulate a pre-v2.1.0 database that has already recorded the
+            # current schema version but predates the extra-chore column.
+            conn.execute("ALTER TABLE chore_logs DROP COLUMN is_extra")
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS schema_version "
+                "(version INTEGER NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO schema_version (version) VALUES (?)",
+                (len(db_module.MIGRATIONS),),
+            )
+            conn.commit()
+            conn.close()
+
+            with patch.object(db_module, 'DB_PATH', legacy_path):
+                db_module.init_db()
+
+            conn = sqlite3.connect(legacy_path)
+            conn.row_factory = sqlite3.Row
+            columns = {
+                row[1] for row in conn.execute(
+                    "PRAGMA table_info(chore_logs)"
+                ).fetchall()
+            }
+            rows = conn.execute("SELECT * FROM chore_logs").fetchall()
+            conn.close()
+
+            self.assertIn('is_extra', columns)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]['status'], 'completed')
+            self.assertEqual(rows[0]['earned_amount'], 2.5)
+            self.assertEqual(rows[0]['is_extra'], 0)
 
 
 class ExtraChoreWorkflowTests(unittest.TestCase):
