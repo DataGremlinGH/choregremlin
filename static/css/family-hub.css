@@ -2132,7 +2132,7 @@ body.fh-nav-enabled {
   font-size: 0.82rem;
   font-weight: 600;
   white-space: nowrap;
-  animation: fhTickerScroll 32s linear infinite;
+  animation: fhTickerScroll 70s linear infinite;
 }
 .fh-alert-ticker:hover .fh-alert-ticker-content { animation-play-state: paused; }
 .fh-alert-ticker-item::before {
@@ -2151,7 +2151,7 @@ body.fh-nav-enabled {
 @media (max-width: 576px) {
   .fh-alert-ticker { top: 0.25rem; border-radius: 14px; }
   .fh-alert-ticker-label { padding: 0 0.55rem; font-size: 0.64rem; }
-  .fh-alert-ticker-content { font-size: 0.75rem; }
+  .fh-alert-ticker-content { font-size: 0.75rem; animation-duration: 95s; }
 }
 
 /* Phase 16 security audit */
@@ -2458,3 +2458,55 @@ body.fh-buttons-glossy .btn:active { transform: translateY(1px); }
   background: rgba(148, 163, 184, 0.06);
 }
 .fh-compliance-stat > i { font-size: 1.1rem; }
+
+/* v2.1.0: modal scroll lock, scrollable mobile actions, extra chores */
+body.fh-modal-open {
+  overflow: hidden !important;
+}
+.modal .modal-body {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.fh-action-scroll {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
+  padding-bottom: 0.25rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--fh-cyan, #14b8a6) 55%, transparent) transparent;
+}
+.fh-action-scroll > * {
+  flex: 0 0 auto;
+}
+.fh-action-scroll::-webkit-scrollbar {
+  height: 5px;
+}
+.fh-action-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fh-cyan, #14b8a6) 55%, transparent);
+}
+.fh-extra-chore-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--fh-border, rgba(148, 163, 184, 0.22));
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--fh-panel, #111827) 88%, transparent);
+}
+.fh-extra-chore-icon {
+  width: 2rem;
+  text-align: center;
+  font-size: 1.25rem;
+  flex: 0 0 auto;
+}
+.fh-extra-chore-option .btn {
+  white-space: nowrap;
+}
