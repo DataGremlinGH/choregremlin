@@ -12,16 +12,18 @@
     </div>
     <h2 class="fh-title mb-1">{{ child['name'] }}</h2>
     <p class="text-muted mb-4">Enter your PIN</p>
-    <form method="POST" id="pinForm">
+    <form method="POST" id="pinForm" class="fh-pin-form"
+          data-pin-min="1" data-pin-max="64"
+          data-pin-min-dots="4" data-pin-max-dots="12">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="fh-pin-display mb-3" id="pinDisplay">
-        <span class="fh-pin-dot"></span>
-        <span class="fh-pin-dot"></span>
-        <span class="fh-pin-dot"></span>
-        <span class="fh-pin-dot"></span>
+      <div class="fh-pin-display mb-3" id="pinDisplay" aria-live="polite"></div>
+      <div class="fh-pin-input-wrap">
+        <input type="password" name="pin" id="pinInput"
+               class="form-control fh-input fh-pin-input"
+               inputmode="numeric" pattern="[0-9]*" maxlength="64"
+               autocomplete="off" aria-label="PIN">
       </div>
-      <input type="hidden" name="pin" id="pinInput" autocomplete="off">
-      <div class="fh-pin-pad">
+      <div class="fh-pin-pad" role="group" aria-label="PIN keypad">
         <button type="button" class="fh-pin-key" data-key="1">1</button>
         <button type="button" class="fh-pin-key" data-key="2">2</button>
         <button type="button" class="fh-pin-key" data-key="3">3</button>
@@ -31,14 +33,15 @@
         <button type="button" class="fh-pin-key" data-key="7">7</button>
         <button type="button" class="fh-pin-key" data-key="8">8</button>
         <button type="button" class="fh-pin-key" data-key="9">9</button>
-        <button type="button" class="fh-pin-key fh-pin-clear pin-btn-reset" data-key="clear" aria-label="Reset PIN">
-          <i class="bi bi-arrow-counterclockwise"></i><span class="fh-pin-key-label">Reset</span>
+        <button type="button" class="fh-pin-key fh-pin-back" data-key="backspace" aria-label="Backspace">
+          <i class="bi bi-backspace"></i>
         </button>
         <button type="button" class="fh-pin-key" data-key="0">0</button>
         <button type="button" class="fh-pin-key fh-pin-go pin-btn-enter" data-key="go" aria-label="Submit PIN">
           <i class="bi bi-check-lg"></i><span class="fh-pin-key-label">Enter</span>
         </button>
       </div>
+      <button type="button" class="fh-pin-clear-link" data-key="clear">Clear</button>
     </form>
     <div class="mt-3">
       <a href="{{ url_for('kiosk_login') }}" class="fh-link fh-link-sm">

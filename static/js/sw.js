@@ -1,5 +1,5 @@
 // Chore Gremlin Service Worker
-const CACHE_NAME = 'choregremlin-v8';
+const CACHE_NAME = 'choregremlin-v9';
 const NAVIGATION_TIMEOUT = 4000;
 const STATIC_ASSETS = [
   '/',
@@ -10,6 +10,7 @@ const STATIC_ASSETS = [
   '/static/js/family-hub.js',
   '/static/js/live-alerts.js',
   '/static/js/kid-ticker.js',
+  '/static/js/pin-pad.js',
   '/static/js/extra-chores.js',
   '/static/js/drop-chores.js',
   '/manifest.json',

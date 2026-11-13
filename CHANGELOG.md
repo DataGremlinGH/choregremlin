@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 - Top action buttons now scroll horizontally on narrow screens instead of running off-screen
 
 ### Added
+- Responsive, device-aware PIN entry for children and adults: an on-screen keypad with dynamic dots on phones, tablets and coarse-pointer screens, and an auto-focused masked numeric input on laptops and desktops with a fine pointer
+- Physical keyboard support for PIN entry (`0-9`, `Backspace`, `Enter`) on tablets with Bluetooth keyboards and when desktop windows are resized
+- Adult and parent sign-in now uses the responsive PIN interface, with password sign-in retained as a fallback for first-time and existing accounts
+- Adult PINs support 4–10 digits in the login UI, backend validation, user administration and the self-service Family page
+- Administrators can set or reset a staff member's sign-in PIN from Manage Users
 - Request Extra Chore workflow on the child kiosk, with duplicate prevention and parental approval
 - Extra chores are stored as independent records (`chore_logs.is_extra`) so they never reset or interfere with daily, weekly or monthly schedules
 - Extra-chore approvals create a separate payment and are labelled in the approval queue

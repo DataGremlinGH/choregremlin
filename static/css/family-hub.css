@@ -931,6 +931,70 @@ body.fh-nav-enabled {
   grid-column: span 1;
   grid-row: span 1;
 }
+.fh-pin-back {
+  font-size: 1.2rem;
+  color: var(--fh-gold);
+  border-color: color-mix(in srgb, var(--fh-gold) 45%, var(--fh-border));
+}
+.fh-pin-clear-link {
+  display: block;
+  margin: 0.75rem auto 0;
+  padding: 0.25rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--fh-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.fh-pin-clear-link:hover {
+  color: var(--fh-text);
+}
+.fh-pin-input-wrap {
+  display: none;
+}
+.fh-pin-input {
+  text-align: center;
+  letter-spacing: 0.55em;
+  font-size: 1.35rem;
+  font-weight: 600;
+  padding-left: 0.55em;
+}
+.fh-pin-form.fh-pin-error .fh-pin-display {
+  animation: fh-pin-shake 0.35s ease-in-out;
+}
+@keyframes fh-pin-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(7px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+.fh-pin-fallback {
+  border-top: 1px solid var(--fh-border);
+  padding-top: 0.75rem;
+}
+.fh-pin-fallback summary {
+  cursor: pointer;
+  color: var(--fh-text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+  list-style: none;
+}
+.fh-pin-fallback summary::-webkit-details-marker {
+  display: none;
+}
+.fh-pin-fallback summary::after {
+  content: " ▾";
+}
+.fh-pin-fallback[open] summary::after {
+  content: " ▴";
+}
+.fh-pin-fallback summary:hover {
+  color: var(--fh-text);
+}
 .fh-pin-key:hover {
   border-color: var(--fh-cyan);
   background: var(--fh-accent-10);
@@ -943,6 +1007,23 @@ body.fh-nav-enabled {
 .pin-btn-reset { color: var(--fh-danger); border-color: color-mix(in srgb, var(--fh-danger) 55%, var(--fh-border)); font-size: 1.2rem; }
 .fh-pin-go,
 .pin-btn-enter { color: var(--fh-green); border-color: color-mix(in srgb, var(--fh-green) 55%, var(--fh-border)); font-size: 1.2rem; }
+
+/* Laptop / desktop with a fine pointer: keyboard-first PIN entry.
+   Touch devices and narrow windows keep the large on-screen keypad. */
+@media (min-width: 769px) and (pointer: fine) {
+  .fh-pin-pad,
+  .fh-pin-clear-link {
+    display: none;
+  }
+  .fh-pin-input-wrap {
+    display: block;
+    max-width: 240px;
+    margin: 0 auto 1rem;
+  }
+  .fh-pin-display {
+    margin-bottom: 1rem;
+  }
+}
 
 /* Raspberry Pi touch displays */
 @media (max-width: 1024px) and (max-height: 600px) {

@@ -68,6 +68,51 @@
     </div>
   </div>
 
+  <!-- Sign-in PIN -->
+  <div class="fh-card mb-3" id="pin-settings">
+    <div class="fh-card-header"><i class="bi bi-shield-lock"></i> Sign-in PIN</div>
+    <div class="fh-card-body">
+      <p class="text-muted small mb-3">
+        {% if g.user and g.user['pin'] %}
+        Your PIN is set. Enter your current PIN to change it.
+        {% else %}
+        You have not set a PIN yet. Set a 4–10 digit PIN to sign in without typing your password.
+        {% endif %}
+      </p>
+      <form method="POST" action="{{ url_for('update_own_pin') }}" class="row g-2 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if g.user and g.user['pin'] %}
+        <div class="col-12 col-md-4">
+          <label class="fh-label" for="currentPin">Current PIN</label>
+          <input type="password" name="current_pin" id="currentPin"
+                 class="form-control fh-input" inputmode="numeric"
+                 pattern="[0-9]{4,10}" maxlength="10" required
+                 autocomplete="current-password">
+        </div>
+        {% endif %}
+        <div class="col-12 col-md-4">
+          <label class="fh-label" for="newPin">New PIN</label>
+          <input type="password" name="new_pin" id="newPin"
+                 class="form-control fh-input" inputmode="numeric"
+                 pattern="[0-9]{4,10}" minlength="4" maxlength="10" required
+                 autocomplete="new-password" placeholder="4–10 digits">
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="fh-label" for="confirmPin">Confirm PIN</label>
+          <input type="password" name="confirm_pin" id="confirmPin"
+                 class="form-control fh-input" inputmode="numeric"
+                 pattern="[0-9]{4,10}" minlength="4" maxlength="10" required
+                 autocomplete="new-password" placeholder="Repeat PIN">
+        </div>
+        <div class="col-12">
+          <button type="submit" class="btn fh-btn-cyan">
+            <i class="bi bi-check-lg"></i> Save PIN
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="row g-3">
     <!-- Notices -->
     <div class="col-12 col-lg-6">

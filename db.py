@@ -1094,6 +1094,17 @@ def verify_password(user, password):
     return check_password_hash(user['password_hash'], password)
 
 
+def verify_user_pin(user, pin):
+    """Check a stored PIN hash without changing lockout counters."""
+    if not user or not user['pin']:
+        return False
+    try:
+        pin = validate_pin(pin)
+    except ValueError:
+        return False
+    return check_password_hash(user['pin'], pin)
+
+
 def set_password(user_id, password):
     password = validate_password(password)
     db = get_db()

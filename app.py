@@ -184,6 +184,17 @@ def client_ip():
     return _normalise_ip(candidate) or remote
 
 
+ADULT_PIN_PATTERN = re.compile(r'^\d{4,10}$', re.ASCII)
+
+
+def validate_adult_pin(pin):
+    """Validate an adult/parent sign-in PIN (4-10 digits)."""
+    pin = str(pin or '').strip()
+    if not ADULT_PIN_PATTERN.match(pin):
+        raise ValueError('PIN must be 4 to 10 digits.')
+    return pin
+
+
 def token_icon_for(currency):
     """Build a safe token icon; uploaded paths and emoji are untrusted settings."""
     currency = currency or {}
@@ -509,6 +520,7 @@ KIOSK_ENDPOINTS = {
 ADMIN_ENDPOINTS = {
     'delete_kid', 'reset_pin', 'delete_chore_route', 'delete_payment_route',
     'manage_parents', 'add_parent', 'delete_parent', 'reset_password',
+    'reset_parent_pin',
     'network_settings', 'network_update', 'network_qr',
     'storage_page', 'storage_move', 'storage_confirm_delete', 'storage_rollback',
     'currency_page', 'currency_save', 'currency_reset_logo',
@@ -520,7 +532,7 @@ ADMIN_ENDPOINTS = {
     'releases_page', 'release_build', 'release_tag', 'release_download',
 }
 STAFF_ENDPOINTS = {
-    'dashboard', 'family_dashboard', 'rewards', 'bank',
+    'dashboard', 'family_dashboard', 'update_own_pin', 'rewards', 'bank',
     'bank_settings', 'bank_deposit', 'bank_withdraw',
     'bank_vault_add', 'bank_vault_close', 'bank_vault_unlock',
     'bank_match_rule_save', 'bank_match_rule_delete',
@@ -673,6 +685,7 @@ def login():
     if request.method == 'POST':
         login_id = request.form.get('username', '').strip()
         password = request.form.get('password', '')
+        pin = request.form.get('pin', '').strip()
         totp_code = request.form.get('totp_code', '').strip()
         ip_address = client_ip()
 
@@ -684,7 +697,23 @@ def login():
             return render_template('login.html')
 
         user = db_module.get_user_by_login(login_id)
-        if user and db_module.verify_password(user, password):
+        authenticated = False
+        failure_reason = 'invalid_credentials'
+        if user and pin:
+            failure_reason = 'invalid_pin'
+            # Adult accounts use a 4-10 digit PIN. The password field remains
+            # available as a fallback for existing accounts and administrators.
+            if user['role'] in ('admin', 'parent'):
+                try:
+                    validate_adult_pin(pin)
+                except ValueError:
+                    authenticated = False
+                else:
+                    authenticated = db_module.verify_user_pin(user, pin)
+        elif user and password:
+            authenticated = db_module.verify_password(user, password)
+
+        if authenticated:
             _clear_auth_session()
             remote_access = db_module.get_setting('remote_access_enabled', '0') == '1'
             totp = db_module.get_totp_secret(user['id'])
@@ -717,9 +746,12 @@ def login():
             db_module.log_login_attempt(login_id, ip_address, True)
             return redirect(url_for('dashboard'))
         else:
-            db_module.log_login_attempt(login_id, ip_address, False, 'invalid_credentials')
+            db_module.log_login_attempt(login_id, ip_address, False, failure_reason)
             db_module.record_failed_attempt(login_id, ip_address)
-            flash('Invalid username or password.', 'danger')
+            if pin:
+                flash('Invalid username or PIN.', 'danger')
+            else:
+                flash('Invalid username or password.', 'danger')
     return render_template('login.html')
 
 
@@ -1251,6 +1283,35 @@ def family_dashboard():
                            active_children=active_children,
                            holiday_children=holiday_children,
                            sick_children=sick_children)
+
+
+@app.route('/account/pin', methods=['POST'])
+@require_role('admin', 'parent')
+def update_own_pin():
+    """Let an adult set or change their own 4-10 digit sign-in PIN."""
+    current_pin = request.form.get('current_pin', '').strip()
+    new_pin = request.form.get('new_pin', '').strip()
+    confirm_pin = request.form.get('confirm_pin', '').strip()
+    user = g.user
+
+    if user['pin'] and not db_module.verify_user_pin(user, current_pin):
+        flash('Current PIN is incorrect.', 'danger')
+        return redirect(url_for('family_dashboard'))
+    if new_pin != confirm_pin:
+        flash('The new PINs do not match.', 'danger')
+        return redirect(url_for('family_dashboard'))
+    try:
+        new_pin = validate_adult_pin(new_pin)
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+        return redirect(url_for('family_dashboard'))
+
+    db_module.set_pin(user['id'], new_pin)
+    db_module.log_activity(
+        session.get('user_id'), 'update_own_pin', 'Updated own sign-in PIN'
+    )
+    flash('Your sign-in PIN has been updated.', 'success')
+    return redirect(url_for('family_dashboard'))
 
 
 @app.route('/rewards')
@@ -2370,6 +2431,7 @@ def add_parent():
     name = request.form.get('name', '').strip()
     username = request.form.get('username', '').strip()
     password = request.form.get('password', '').strip()
+    pin = request.form.get('pin', '').strip() or None
     role = request.form.get('role', 'parent')
     if role not in ('admin', 'parent'):
         flash('Choose a valid staff role.', 'danger')
@@ -2379,11 +2441,13 @@ def add_parent():
         return redirect(url_for('manage_parents'))
     try:
         db_module.validate_password(password)
+        if pin:
+            pin = validate_adult_pin(pin)
     except ValueError as exc:
         flash(str(exc), 'danger')
         return redirect(url_for('manage_parents'))
     try:
-        db_module.create_user(name, None, password, role=role, username=username)
+        db_module.create_user(name, None, password, role=role, username=username, pin=pin)
         flash(f'Added {role}: {name}.', 'success')
     except Exception:
         flash('Username already in use.', 'danger')
@@ -2591,6 +2655,27 @@ def reset_password(parent_id):
     db_module.set_password(parent_id, password)
     db_module.log_activity(session.get('user_id'), 'reset_password', f'Reset password for user {parent_id}')
     flash('Password reset.', 'success')
+    return redirect(url_for('manage_parents'))
+
+
+@app.route('/parents/<int:parent_id>/reset-pin', methods=['POST'])
+@require_role('admin')
+def reset_parent_pin(parent_id):
+    user = db_module.get_user(parent_id)
+    if not user or user['role'] not in ('admin', 'parent'):
+        flash('Staff user not found.', 'danger')
+        return redirect(url_for('manage_parents'))
+    pin = request.form.get('pin', '').strip()
+    try:
+        pin = validate_adult_pin(pin)
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+        return redirect(url_for('manage_parents'))
+    db_module.set_pin(parent_id, pin)
+    db_module.log_activity(
+        session.get('user_id'), 'reset_pin', f'Reset PIN for user {parent_id}'
+    )
+    flash(f'PIN updated for {user["name"]}.', 'success')
     return redirect(url_for('manage_parents'))
 
 
