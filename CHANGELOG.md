@@ -7,7 +7,6 @@ All notable changes to this project will be documented in this file.
 ## [2.1.0] - 2026-11-13
 
 ### Fixed
-- Automatic non-destructive migration adds `chore_logs.is_extra` to existing databases without dropping or rewriting chore history, streaks, balances or settings
 - Kiosk navigation freeze caused by unclosed SSE connections and service-worker interception of `/events/stream`
 - Service-worker navigation now falls back to the cached shell after a short timeout instead of hanging indefinitely
 - Background scroll is locked while any Bootstrap modal is open, including the Add Custom Milestone dialog

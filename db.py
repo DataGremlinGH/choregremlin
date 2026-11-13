@@ -575,7 +575,7 @@ MIGRATIONS = [
     "ALTER TABLE chores ADD COLUMN requires_hard_chores INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN pin_failures INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN pin_locked_until TEXT",
-    _ensure_extra_chore_column,
+    "ALTER TABLE chore_logs ADD COLUMN is_extra INTEGER NOT NULL DEFAULT 0",
     """CREATE TABLE IF NOT EXISTS rfid_tags (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tag_uid TEXT NOT NULL UNIQUE,
