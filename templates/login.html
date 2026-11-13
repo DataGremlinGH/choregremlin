@@ -10,6 +10,10 @@
       <h1 class="fh-title">Chore Gremlin</h1>
       <p class="text-muted fh-tagline">The little gremlin that gets the chores done</p>
     </div>
+    <p class="text-muted small text-center mb-3">
+      Parents sign in with a PIN. Administrators use the
+      <a href="{{ url_for('admin_login') }}" class="fh-link">password-only sign-in</a>.
+    </p>
     <form method="POST" id="pinForm" class="fh-pin-form"
           data-pin-min="4" data-pin-max="10"
           data-pin-min-dots="4" data-pin-max-dots="10">
@@ -76,15 +80,19 @@
                  class="form-control fh-input" placeholder="Password"
                  autocomplete="current-password">
           <div class="form-text">
-            For first-time sign-in, administrator accounts, or anyone who has not set a PIN yet.
+            For first-time sign-in or anyone who has not set a PIN yet.
             You can set a 4–10 digit PIN from the Family page after signing in.
+            Administrators must use the password-only administrator sign-in.
           </div>
         </div>
       </details>
     </form>
-    <div class="text-center mt-3">
+    <div class="text-center mt-3 d-grid gap-2">
       <a href="{{ url_for('kiosk_login') }}" class="fh-link">
         <i class="bi bi-tablet me-1"></i>Go to Kiosk Mode
+      </a>
+      <a href="{{ url_for('admin_login') }}" class="fh-link fh-link-sm">
+        <i class="bi bi-shield-lock me-1"></i>Administrator sign-in
       </a>
     </div>
   </div>

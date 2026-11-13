@@ -69,6 +69,7 @@
   </div>
 
   <!-- Sign-in PIN -->
+  {% if g.user and g.user['role'] == 'parent' %}
   <div class="fh-card mb-3" id="pin-settings">
     <div class="fh-card-header"><i class="bi bi-shield-lock"></i> Sign-in PIN</div>
     <div class="fh-card-body">
@@ -112,6 +113,16 @@
       </form>
     </div>
   </div>
+  {% else %}
+  <div class="fh-card mb-3">
+    <div class="fh-card-header"><i class="bi bi-shield-lock"></i> Sign-in Security</div>
+    <div class="fh-card-body">
+      <p class="text-muted small mb-0">
+        Administrator accounts sign in with a password only. PIN sign-in is available for parent accounts.
+      </p>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="row g-3">
     <!-- Notices -->

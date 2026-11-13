@@ -502,7 +502,7 @@ def inject_globals():
 
 
 PUBLIC_ENDPOINTS = {
-    'index', 'setup', 'login', 'logout', 'kiosk_login', 'kiosk_select',
+    'index', 'setup', 'login', 'admin_login', 'logout', 'kiosk_login', 'kiosk_select',
     'kiosk_rfid_scan', 'kiosk_child_logout', 'manifest', 'service_worker',
     'chore_icon_file', 'trust_page', 'trust_ca',
 }
@@ -673,86 +673,120 @@ def setup():
         db_module.init_db()
         db_module.set_setting('app_name', app_name)
         db_module.create_user(name, None, password, role='admin', username=username)
-        flash('Admin account created! Please sign in.', 'success')
-        return redirect(url_for('login'))
+        flash('Admin account created! Please sign in with your password.', 'success')
+        return redirect(url_for('admin_login'))
     return render_template('setup.html')
+
+
+def _complete_staff_login(user, login_id, ip_address, totp_code, template):
+    """Finish a verified staff login, including mandatory/remote 2FA."""
+    _clear_auth_session()
+    remote_access = db_module.get_setting('remote_access_enabled', '0') == '1'
+    totp = db_module.get_totp_secret(user['id'])
+    if user['role'] == 'admin' and not totp:
+        session['pending_2fa_user_id'] = user['id']
+        session['pending_2fa_forced'] = True
+        db_module.log_login_attempt(login_id, ip_address, True, '2fa_setup_required')
+        flash('Administrators must set up two-factor authentication. Scan the QR code with your authenticator app to continue.', 'warning')
+        return redirect(url_for('setup_2fa'))
+    require_totp = bool(totp) and (user['role'] == 'admin' or remote_access)
+    if require_totp:
+        if not totp_code:
+            db_module.log_login_attempt(login_id, ip_address, True, 'totp_required')
+            return render_template(template, require_totp=True, username=login_id,
+                                   admin_2fa=user['role'] == 'admin')
+        if not verify_totp(totp['secret'], totp_code):
+            code_hash = hashlib.sha256(totp_code.upper().encode()).hexdigest()
+            if not db_module.verify_backup_code(user['id'], code_hash):
+                db_module.log_login_attempt(login_id, ip_address, False, 'invalid_totp')
+                db_module.record_failed_attempt(login_id, ip_address)
+                flash('Invalid authentication code.', 'danger')
+                return render_template(template, require_totp=True, username=login_id,
+                                       admin_2fa=user['role'] == 'admin')
+    session.pop('pending_2fa_user_id', None)
+    session.pop('pending_2fa_forced', None)
+    session['user_id'] = user['id']
+    session['role'] = user['role']
+    session['2fa_verified'] = bool(require_totp)
+    db_module.clear_lockout(login_id, ip_address)
+    db_module.log_login_attempt(login_id, ip_address, True)
+    return redirect(url_for('dashboard'))
+
+
+def _staff_login(template, *, admin_only=False):
+    """Shared staff sign-in flow.
+
+    ``admin_only`` renders the dedicated administrator screen and refuses to
+    authenticate anyone but an administrator. Administrator accounts are
+    always password-only, even on the parent/kiosk-facing login page.
+    """
+    if not db_module.is_setup_complete():
+        return redirect(url_for('setup'))
+    if request.method != 'POST':
+        return render_template(template)
+
+    login_id = request.form.get('username', '').strip()
+    password = request.form.get('password', '')
+    pin = request.form.get('pin', '').strip()
+    totp_code = request.form.get('totp_code', '').strip()
+    ip_address = client_ip()
+
+    # Check lockout
+    is_locked, minutes_left = db_module.check_lockout(login_id, ip_address)
+    if is_locked:
+        flash(f'Too many failed attempts. Try again in {minutes_left} minute(s).', 'danger')
+        db_module.log_login_attempt(login_id, ip_address, False, 'locked_out')
+        return render_template(template)
+
+    user = db_module.get_user_by_login(login_id)
+    authenticated = False
+    failure_reason = 'invalid_credentials'
+
+    if user and user['role'] == 'admin':
+        # Administrators must always use their password. A PIN must never
+        # authenticate an admin account, even if an old PIN hash still exists.
+        failure_reason = 'admin_password_required'
+        if password:
+            authenticated = db_module.verify_password(user, password)
+    elif admin_only:
+        # The administrator screen never accepts a PIN and never authenticates
+        # parent or child accounts.
+        failure_reason = 'admin_only'
+    elif user and user['role'] == 'parent' and pin:
+        failure_reason = 'invalid_pin'
+        try:
+            validate_adult_pin(pin)
+        except ValueError:
+            authenticated = False
+        else:
+            authenticated = db_module.verify_user_pin(user, pin)
+    elif user and user['role'] == 'parent' and password:
+        authenticated = db_module.verify_password(user, password)
+
+    if authenticated:
+        return _complete_staff_login(user, login_id, ip_address, totp_code, template)
+
+    db_module.log_login_attempt(login_id, ip_address, False, failure_reason)
+    db_module.record_failed_attempt(login_id, ip_address)
+    if admin_only:
+        flash('Invalid administrator username or password.', 'danger')
+    elif user and user['role'] == 'admin' and pin:
+        flash('Administrators must sign in with their password.', 'danger')
+    elif pin:
+        flash('Invalid username or PIN.', 'danger')
+    else:
+        flash('Invalid username or password.', 'danger')
+    return render_template(template)
 
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if not db_module.is_setup_complete():
-        return redirect(url_for('setup'))
-    if request.method == 'POST':
-        login_id = request.form.get('username', '').strip()
-        password = request.form.get('password', '')
-        pin = request.form.get('pin', '').strip()
-        totp_code = request.form.get('totp_code', '').strip()
-        ip_address = client_ip()
+    return _staff_login('login.html')
 
-        # Check lockout
-        is_locked, minutes_left = db_module.check_lockout(login_id, ip_address)
-        if is_locked:
-            flash(f'Too many failed attempts. Try again in {minutes_left} minute(s).', 'danger')
-            db_module.log_login_attempt(login_id, ip_address, False, 'locked_out')
-            return render_template('login.html')
 
-        user = db_module.get_user_by_login(login_id)
-        authenticated = False
-        failure_reason = 'invalid_credentials'
-        if user and pin:
-            failure_reason = 'invalid_pin'
-            # Adult accounts use a 4-10 digit PIN. The password field remains
-            # available as a fallback for existing accounts and administrators.
-            if user['role'] in ('admin', 'parent'):
-                try:
-                    validate_adult_pin(pin)
-                except ValueError:
-                    authenticated = False
-                else:
-                    authenticated = db_module.verify_user_pin(user, pin)
-        elif user and password:
-            authenticated = db_module.verify_password(user, password)
-
-        if authenticated:
-            _clear_auth_session()
-            remote_access = db_module.get_setting('remote_access_enabled', '0') == '1'
-            totp = db_module.get_totp_secret(user['id'])
-            if user['role'] == 'admin' and not totp:
-                session['pending_2fa_user_id'] = user['id']
-                session['pending_2fa_forced'] = True
-                db_module.log_login_attempt(login_id, ip_address, True, '2fa_setup_required')
-                flash('Administrators must set up two-factor authentication. Scan the QR code with your authenticator app to continue.', 'warning')
-                return redirect(url_for('setup_2fa'))
-            require_totp = bool(totp) and (user['role'] == 'admin' or remote_access)
-            if require_totp:
-                if not totp_code:
-                    db_module.log_login_attempt(login_id, ip_address, True, 'totp_required')
-                    return render_template('login.html', require_totp=True, username=login_id,
-                                           admin_2fa=user['role'] == 'admin')
-                if not verify_totp(totp['secret'], totp_code):
-                    code_hash = hashlib.sha256(totp_code.upper().encode()).hexdigest()
-                    if not db_module.verify_backup_code(user['id'], code_hash):
-                        db_module.log_login_attempt(login_id, ip_address, False, 'invalid_totp')
-                        db_module.record_failed_attempt(login_id, ip_address)
-                        flash('Invalid authentication code.', 'danger')
-                        return render_template('login.html', require_totp=True, username=login_id,
-                                               admin_2fa=user['role'] == 'admin')
-            session.pop('pending_2fa_user_id', None)
-            session.pop('pending_2fa_forced', None)
-            session['user_id'] = user['id']
-            session['role'] = user['role']
-            session['2fa_verified'] = bool(require_totp)
-            db_module.clear_lockout(login_id, ip_address)
-            db_module.log_login_attempt(login_id, ip_address, True)
-            return redirect(url_for('dashboard'))
-        else:
-            db_module.log_login_attempt(login_id, ip_address, False, failure_reason)
-            db_module.record_failed_attempt(login_id, ip_address)
-            if pin:
-                flash('Invalid username or PIN.', 'danger')
-            else:
-                flash('Invalid username or password.', 'danger')
-    return render_template('login.html')
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    return _staff_login('admin_login.html', admin_only=True)
 
 
 @app.route('/logout')
@@ -1294,6 +1328,9 @@ def update_own_pin():
     confirm_pin = request.form.get('confirm_pin', '').strip()
     user = g.user
 
+    if user['role'] == 'admin':
+        flash('Administrators sign in with a password and cannot set a PIN.', 'danger')
+        return redirect(url_for('family_dashboard'))
     if user['pin'] and not db_module.verify_user_pin(user, current_pin):
         flash('Current PIN is incorrect.', 'danger')
         return redirect(url_for('family_dashboard'))
@@ -2441,8 +2478,12 @@ def add_parent():
         return redirect(url_for('manage_parents'))
     try:
         db_module.validate_password(password)
-        if pin:
+        # Administrators are password-only, so a PIN is only stored for
+        # parent accounts. Ignore any stale PIN submitted for an admin.
+        if pin and role == 'parent':
             pin = validate_adult_pin(pin)
+        else:
+            pin = None
     except ValueError as exc:
         flash(str(exc), 'danger')
         return redirect(url_for('manage_parents'))
@@ -2664,6 +2705,9 @@ def reset_parent_pin(parent_id):
     user = db_module.get_user(parent_id)
     if not user or user['role'] not in ('admin', 'parent'):
         flash('Staff user not found.', 'danger')
+        return redirect(url_for('manage_parents'))
+    if user['role'] == 'admin':
+        flash('Administrators sign in with a password; PINs are only for parent accounts.', 'danger')
         return redirect(url_for('manage_parents'))
     pin = request.form.get('pin', '').strip()
     try:

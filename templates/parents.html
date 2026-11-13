@@ -27,60 +27,15 @@
               <button class="btn btn-sm fh-btn-outline" data-bs-toggle="modal" data-bs-target="#resetPwModal{{ a['id'] }}" title="Reset password">
                 <i class="bi bi-key"></i>
               </button>
-              <button class="btn btn-sm fh-btn-outline" data-bs-toggle="modal" data-bs-target="#resetPinModal{{ a['id'] }}" title="Set sign-in PIN">
-                <i class="bi bi-hash"></i>
-              </button>
               <form method="POST" action="{{ url_for('delete_parent', parent_id=a['id']) }}" onsubmit="return confirm('Remove {{ a["name"] }}?')">
                 <button class="btn btn-sm fh-btn-danger" {{ 'disabled' if admins|length <= 1 else '' }}><i class="bi bi-trash"></i></button>
               </form>
             </div>
           </div>
-          <!-- Reset Password Modal -->
-          <div class="modal fade" id="resetPwModal{{ a['id'] }}" tabindex="-1">
-            <div class="modal-dialog modal-dialog-centered modal-sm">
-              <div class="modal-content fh-modal-content">
-                <div class="modal-header fh-modal-header">
-                  <h5 class="modal-title"><i class="bi bi-key"></i> Reset Password</h5>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST" action="{{ url_for('reset_password', parent_id=a['id']) }}">
-                  <div class="modal-body">
-                    <label class="fh-label">New Password for {{ a['name'] }}</label>
-                    <input type="password" name="password" class="form-control fh-input" required minlength="10" placeholder="At least 10 characters">
-                  </div>
-                  <div class="modal-footer fh-modal-footer">
-                    <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn fh-btn-cyan">Reset</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-          <!-- Set PIN Modal -->
-          <div class="modal fade" id="resetPinModal{{ a['id'] }}" tabindex="-1">
-            <div class="modal-dialog modal-dialog-centered modal-sm">
-              <div class="modal-content fh-modal-content">
-                <div class="modal-header fh-modal-header">
-                  <h5 class="modal-title"><i class="bi bi-hash"></i> Set Sign-in PIN</h5>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST" action="{{ url_for('reset_parent_pin', parent_id=a['id']) }}">
-                  <div class="modal-body">
-                    <label class="fh-label">New PIN for {{ a['name'] }}</label>
-                    <input type="password" name="pin" class="form-control fh-input"
-                           inputmode="numeric" pattern="[0-9]{4,10}" minlength="4" maxlength="10"
-                           required placeholder="4–10 digits" autocomplete="new-password">
-                    <div class="form-text">Adults sign in with a 4–10 digit PIN.</div>
-                  </div>
-                  <div class="modal-footer fh-modal-footer">
-                    <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn fh-btn-cyan">Save PIN</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
           {% endfor %}
+          <p class="text-muted small mb-0 mt-2">
+            <i class="bi bi-info-circle me-1"></i>Administrators sign in with a password only.
+          </p>
         </div>
       </div>
     </div>
@@ -107,51 +62,6 @@
               </form>
             </div>
           </div>
-          <!-- Reset Password Modal -->
-          <div class="modal fade" id="resetPwModal{{ p['id'] }}" tabindex="-1">
-            <div class="modal-dialog modal-dialog-centered modal-sm">
-              <div class="modal-content fh-modal-content">
-                <div class="modal-header fh-modal-header">
-                  <h5 class="modal-title"><i class="bi bi-key"></i> Reset Password</h5>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST" action="{{ url_for('reset_password', parent_id=p['id']) }}">
-                  <div class="modal-body">
-                    <label class="fh-label">New Password for {{ p['name'] }}</label>
-                    <input type="password" name="password" class="form-control fh-input" required minlength="10" placeholder="At least 10 characters">
-                  </div>
-                  <div class="modal-footer fh-modal-footer">
-                    <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn fh-btn-cyan">Reset</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-          <!-- Set PIN Modal -->
-          <div class="modal fade" id="resetPinModal{{ p['id'] }}" tabindex="-1">
-            <div class="modal-dialog modal-dialog-centered modal-sm">
-              <div class="modal-content fh-modal-content">
-                <div class="modal-header fh-modal-header">
-                  <h5 class="modal-title"><i class="bi bi-hash"></i> Set Sign-in PIN</h5>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST" action="{{ url_for('reset_parent_pin', parent_id=p['id']) }}">
-                  <div class="modal-body">
-                    <label class="fh-label">New PIN for {{ p['name'] }}</label>
-                    <input type="password" name="pin" class="form-control fh-input"
-                           inputmode="numeric" pattern="[0-9]{4,10}" minlength="4" maxlength="10"
-                           required placeholder="4–10 digits" autocomplete="new-password">
-                    <div class="form-text">Adults sign in with a 4–10 digit PIN.</div>
-                  </div>
-                  <div class="modal-footer fh-modal-footer">
-                    <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn fh-btn-cyan">Save PIN</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
           {% else %}
           <p class="text-muted">No parent accounts.</p>
           {% endfor %}
@@ -161,38 +71,129 @@
   </div>
 </div>
 
+{# Modals live outside .fh-page/.fh-card on purpose. Cards use
+   backdrop-filter and overflow:hidden, which create a stacking context and
+   trap position:fixed modals underneath Bootstrap's body-level backdrop. #}
+
+<!-- Admin password modals -->
+{% for a in admins %}
+<div class="modal fade" id="resetPwModal{{ a['id'] }}" tabindex="-1"
+     data-bs-backdrop="true" data-bs-keyboard="true"
+     aria-labelledby="resetPwModalLabel{{ a['id'] }}" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title" id="resetPwModalLabel{{ a['id'] }}"><i class="bi bi-key"></i> Reset Password</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="{{ url_for('reset_password', parent_id=a['id']) }}">
+        <div class="modal-body">
+          <label class="fh-label" for="adminPassword{{ a['id'] }}">New Password for {{ a['name'] }}</label>
+          <input type="password" name="password" id="adminPassword{{ a['id'] }}"
+                 class="form-control fh-input" required minlength="10"
+                 placeholder="At least 10 characters" autocomplete="new-password">
+        </div>
+        <div class="modal-footer fh-modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan">Reset</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<!-- Parent password + PIN modals -->
+{% for p in parents %}
+<div class="modal fade" id="resetPwModal{{ p['id'] }}" tabindex="-1"
+     data-bs-backdrop="true" data-bs-keyboard="true"
+     aria-labelledby="resetPwModalLabel{{ p['id'] }}" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title" id="resetPwModalLabel{{ p['id'] }}"><i class="bi bi-key"></i> Reset Password</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="{{ url_for('reset_password', parent_id=p['id']) }}">
+        <div class="modal-body">
+          <label class="fh-label" for="parentPassword{{ p['id'] }}">New Password for {{ p['name'] }}</label>
+          <input type="password" name="password" id="parentPassword{{ p['id'] }}"
+                 class="form-control fh-input" required minlength="10"
+                 placeholder="At least 10 characters" autocomplete="new-password">
+        </div>
+        <div class="modal-footer fh-modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan">Reset</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="resetPinModal{{ p['id'] }}" tabindex="-1"
+     data-bs-backdrop="true" data-bs-keyboard="true"
+     aria-labelledby="resetPinModalLabel{{ p['id'] }}" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content fh-modal-content">
+      <div class="modal-header fh-modal-header">
+        <h5 class="modal-title" id="resetPinModalLabel{{ p['id'] }}"><i class="bi bi-hash"></i> Set Sign-in PIN</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="{{ url_for('reset_parent_pin', parent_id=p['id']) }}">
+        <div class="modal-body">
+          <label class="fh-label" for="parentPin{{ p['id'] }}">New PIN for {{ p['name'] }}</label>
+          <input type="password" name="pin" id="parentPin{{ p['id'] }}"
+                 class="form-control fh-input"
+                 inputmode="numeric" pattern="[0-9]{4,10}" minlength="4" maxlength="10"
+                 required placeholder="4–10 digits" autocomplete="new-password"
+                 data-fh-autofocus>
+          <div class="form-text">Parents sign in with a 4–10 digit PIN.</div>
+        </div>
+        <div class="modal-footer fh-modal-footer">
+          <button type="button" class="btn fh-btn-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn fh-btn-cyan">Save PIN</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
 <!-- Add User Modal -->
-<div class="modal fade" id="addUserModal" tabindex="-1">
+<div class="modal fade" id="addUserModal" tabindex="-1"
+     data-bs-backdrop="true" data-bs-keyboard="true"
+     aria-labelledby="addUserModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content fh-modal-content">
       <div class="modal-header fh-modal-header">
-        <h5 class="modal-title"><i class="bi bi-person-plus-fill"></i> Add User</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <h5 class="modal-title" id="addUserModalLabel"><i class="bi bi-person-plus-fill"></i> Add User</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <form method="POST" action="{{ url_for('add_parent') }}">
         <div class="modal-body">
           <div class="mb-3">
-            <label class="fh-label">Name</label>
-            <input type="text" name="name" class="form-control fh-input" required>
+            <label class="fh-label" for="addUserName">Name</label>
+            <input type="text" name="name" id="addUserName" class="form-control fh-input" required data-fh-autofocus>
           </div>
           <div class="mb-3">
-            <label class="fh-label">Username</label>
-            <input type="text" name="username" class="form-control fh-input" required placeholder="login name">
+            <label class="fh-label" for="addUserUsername">Username</label>
+            <input type="text" name="username" id="addUserUsername" class="form-control fh-input" required placeholder="login name">
           </div>
           <div class="mb-3">
-            <label class="fh-label">Password</label>
-            <input type="password" name="password" class="form-control fh-input" required minlength="10">
+            <label class="fh-label" for="addUserPassword">Password</label>
+            <input type="password" name="password" id="addUserPassword" class="form-control fh-input" required minlength="10">
           </div>
-          <div class="mb-3">
-            <label class="fh-label">Sign-in PIN <span class="text-muted">(optional)</span></label>
-            <input type="password" name="pin" class="form-control fh-input"
+          <div class="mb-3" id="addUserPinWrap">
+            <label class="fh-label" for="addUserPin">Parent sign-in PIN <span class="text-muted">(optional)</span></label>
+            <input type="password" name="pin" id="addUserPin"
+                   class="form-control fh-input"
                    inputmode="numeric" pattern="[0-9]{4,10}" minlength="4" maxlength="10"
                    placeholder="4–10 digits" autocomplete="new-password">
-            <div class="form-text">Adults can sign in with this PIN instead of their password.</div>
+            <div class="form-text">Parents can sign in with this PIN instead of their password. Administrators always use a password.</div>
           </div>
           <div class="mb-2">
-            <label class="fh-label">Role</label>
-            <select name="role" class="form-select fh-input">
+            <label class="fh-label" for="addUserRole">Role</label>
+            <select name="role" id="addUserRole" class="form-select fh-input">
               <option value="parent">Parent</option>
               <option value="admin">Administrator</option>
             </select>
@@ -206,4 +207,22 @@
     </div>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var role = document.getElementById('addUserRole');
+  var wrap = document.getElementById('addUserPinWrap');
+  if (!role || !wrap) return;
+  var sync = function () {
+    var isParent = role.value === 'parent';
+    wrap.hidden = !isParent;
+    wrap.querySelectorAll('input').forEach(function (input) {
+      input.disabled = !isParent;
+    });
+  };
+  role.addEventListener('change', sync);
+  sync();
+})();
+</script>
 {% endblock %}

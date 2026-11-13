@@ -1,5 +1,5 @@
 // Chore Gremlin Service Worker
-const CACHE_NAME = 'choregremlin-v9';
+const CACHE_NAME = 'choregremlin-v10';
 const NAVIGATION_TIMEOUT = 4000;
 const STATIC_ASSETS = [
   '/',

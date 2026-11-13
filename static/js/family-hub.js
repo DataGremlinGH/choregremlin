@@ -39,15 +39,37 @@ setTimeout(() => {
   document.addEventListener('hide.bs.modal', () => window.setTimeout(unlockScroll, 0));
   document.addEventListener('hidden.bs.modal', () => window.setTimeout(unlockScroll, 0));
 
-  // Repair stale Bootstrap state after a bfcache restore or interrupted modal.
-  window.addEventListener('pageshow', () => {
+  // Focus the first meaningful control when a dialog opens. PIN dialogs mark
+  // their input with data-fh-autofocus so it is ready to type into immediately.
+  document.addEventListener('shown.bs.modal', (event) => {
+    const modal = event.target;
+    if (!modal) return;
+    const target = modal.querySelector('[data-fh-autofocus]') ||
+      modal.querySelector('input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])');
+    if (!target) return;
+    window.setTimeout(() => {
+      try {
+        target.focus({ preventScroll: true });
+      } catch (err) {
+        target.focus();
+      }
+    }, 30);
+  });
+
+  // Remove a stale backdrop that would otherwise leave a grey film over the
+  // page and swallow clicks after an interrupted modal transition.
+  const clearStaleBackdrop = () => {
     if (document.querySelector('.modal.show')) return;
     document.querySelectorAll('.modal-backdrop').forEach((el) => el.remove());
     body.classList.remove('fh-modal-open');
     body.classList.remove('modal-open');
     body.style.removeProperty('overflow');
     body.style.removeProperty('padding-right');
-  });
+  };
+  document.addEventListener('hidden.bs.modal', () => window.setTimeout(clearStaleBackdrop, 0));
+
+  // Repair stale Bootstrap state after a bfcache restore or interrupted modal.
+  window.addEventListener('pageshow', clearStaleBackdrop);
 })();
 
 // Responsive app shell navigation

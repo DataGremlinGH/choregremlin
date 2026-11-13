@@ -1,8 +1,14 @@
 """Tests for the responsive PIN interfaces and 4-10 digit adult PINs."""
+import base64
+import hashlib
+import hmac
 import os
+import struct
 import sys
 import tempfile
+import time
 import unittest
+from html.parser import HTMLParser
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -14,8 +20,54 @@ import app as app_module  # noqa: E402
 
 ADMIN_PASSWORD = 'responsive-pin-admin-password'
 PARENT_PASSWORD = 'responsive-pin-parent-password'
+ADMIN_TOTP_SECRET = 'JBSWY3DPEHPK3PXP'
 _FIXTURES = {}
 _FIXTURE_CONTEXT = None
+
+
+def current_totp(secret):
+    key = base64.b32decode(secret + '=' * (-len(secret) % 8))
+    counter = int(time.time() // 30)
+    digest = hmac.new(key, struct.pack('>Q', counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    value = struct.unpack('>I', digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    return str(value).zfill(6)[-6:]
+
+
+class _ModalPlacementParser(HTMLParser):
+    """Detect whether a modal element is nested inside a .fh-card ancestor."""
+
+    VOID = {
+        'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+        'link', 'meta', 'param', 'source', 'track', 'wbr',
+    }
+
+    def __init__(self, modal_id):
+        super().__init__(convert_charrefs=True)
+        self.modal_id = modal_id
+        self.stack = []
+        self.found = False
+        self.inside_card = False
+
+    def _record(self, tag, attrs):
+        attrs = dict(attrs)
+        if attrs.get('id') == self.modal_id:
+            self.found = True
+            self.inside_card = any('fh-card' in classes for _, classes in self.stack)
+        if tag not in self.VOID:
+            self.stack.append((tag, (attrs.get('class') or '').split()))
+
+    def handle_starttag(self, tag, attrs):
+        self._record(tag, attrs)
+
+    def handle_startendtag(self, tag, attrs):
+        self._record(tag, attrs)
+
+    def handle_endtag(self, tag):
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] == tag:
+                del self.stack[index:]
+                break
 
 
 def _ensure_fixtures():
@@ -167,6 +219,100 @@ class ResponsivePinMarkupTests(ResponsivePinTestCase):
         self.assertIn('name="current_pin"', html)
         self.assertIn('name="new_pin"', html)
         self.assertIn('name="confirm_pin"', html)
+
+    def test_pin_modal_is_not_nested_inside_a_card(self):
+        self.login_as(self.admin_id)
+        page = self.client.get('/parents')
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+
+        parser = _ModalPlacementParser(f'resetPinModal{self.target_parent_id}')
+        parser.feed(html)
+        self.assertTrue(parser.found, 'Set Sign-in PIN modal is missing')
+        self.assertFalse(
+            parser.inside_card,
+            'PIN modal must live outside .fh-card so the backdrop cannot cover it',
+        )
+        self.assertIn('data-fh-autofocus', html)
+        self.assertIn('data-bs-backdrop="true"', html)
+
+
+class AdminPasswordOnlyLoginTests(ResponsivePinTestCase):
+    def test_admin_login_page_has_no_pin_controls(self):
+        page = self.client.get('/admin/login')
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+
+        self.assertIn('Administrator Sign In', html)
+        self.assertIn('name="password"', html)
+        self.assertNotIn('pinForm', html)
+        self.assertNotIn('pinInput', html)
+        self.assertNotIn('fh-pin-pad', html)
+        self.assertNotIn('name="pin"', html)
+
+    def test_admin_can_sign_in_with_password_and_totp(self):
+        response = self.client.post('/admin/login', data={
+            'username': 'responsive_pin_admin',
+            'password': ADMIN_PASSWORD,
+            'totp_code': current_totp(ADMIN_TOTP_SECRET),
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/dashboard', response.headers['Location'])
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess.get('user_id'), self.admin_id)
+
+    def test_admin_pin_is_rejected_on_admin_login(self):
+        db_module.set_pin(self.admin_id, '4321')
+        response = self.client.post('/admin/login', data={
+            'username': 'responsive_pin_admin',
+            'pin': '4321',
+        })
+        self.assertEqual(response.status_code, 200)
+        with self.client.session_transaction() as sess:
+            self.assertIsNone(sess.get('user_id'))
+
+    def test_admin_pin_is_rejected_on_shared_login(self):
+        db_module.set_pin(self.admin_id, '4321')
+        response = self.client.post('/login', data={
+            'username': 'responsive_pin_admin',
+            'pin': '4321',
+        })
+        self.assertEqual(response.status_code, 200)
+        with self.client.session_transaction() as sess:
+            self.assertIsNone(sess.get('user_id'))
+
+    def test_parent_cannot_use_admin_login(self):
+        response = self.client.post('/admin/login', data={
+            'username': 'responsive_pin_parent',
+            'password': PARENT_PASSWORD,
+        })
+        self.assertEqual(response.status_code, 200)
+        with self.client.session_transaction() as sess:
+            self.assertIsNone(sess.get('user_id'))
+
+    def test_admin_rows_do_not_offer_pin_reset(self):
+        self.login_as(self.admin_id)
+        html = self.client.get('/parents').get_data(as_text=True)
+        self.assertNotIn(f'/parents/{self.admin_id}/reset-pin', html)
+
+    def test_admin_pin_reset_route_rejects_admin(self):
+        self.login_as(self.admin_id)
+        before = db_module.get_user(self.admin_id)['pin']
+        response = self.client.post(
+            f'/parents/{self.admin_id}/reset-pin', data={'pin': '9876'}
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(db_module.get_user(self.admin_id)['pin'], before)
+
+    def test_admin_cannot_update_own_pin(self):
+        self.login_as(self.admin_id)
+        before = db_module.get_user(self.admin_id)['pin']
+        response = self.client.post('/account/pin', data={
+            'new_pin': '13579',
+            'confirm_pin': '13579',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(db_module.get_user(self.admin_id)['pin'], before)
 
 
 class AdultPinLoginTests(ResponsivePinTestCase):

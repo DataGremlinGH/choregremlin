@@ -666,6 +666,15 @@ body.fh-nav-enabled {
 }
 .fh-modal-footer { border-top: 1px solid var(--fh-border); }
 
+/* Bootstrap modal layering. The dialog must always paint above the backdrop,
+   and the backdrop must never intercept clicks intended for the dialog.
+   Modals are kept outside .fh-card because backdrop-filter and
+   overflow:hidden create a stacking context that traps position:fixed
+   dialogs underneath the body-level backdrop (the "grey film" lockup). */
+.modal { z-index: 1055; }
+.modal-backdrop { z-index: 1050; pointer-events: auto; }
+.modal.show .modal-content { pointer-events: auto; }
+
 /* ---- Flash ---- */
 .fh-flash-container { max-width: 600px; }
 .fh-alert {
@@ -1007,6 +1016,13 @@ body.fh-nav-enabled {
 .pin-btn-reset { color: var(--fh-danger); border-color: color-mix(in srgb, var(--fh-danger) 55%, var(--fh-border)); font-size: 1.2rem; }
 .fh-pin-go,
 .pin-btn-enter { color: var(--fh-green); border-color: color-mix(in srgb, var(--fh-green) 55%, var(--fh-border)); font-size: 1.2rem; }
+
+/* Touch devices, phones and narrow windows: on-screen keypad only. */
+@media (pointer: coarse), (max-width: 768px) {
+  .fh-pin-pad { display: grid; }
+  .fh-pin-clear-link { display: block; }
+  .fh-pin-input-wrap { display: none; }
+}
 
 /* Laptop / desktop with a fine pointer: keyboard-first PIN entry.
    Touch devices and narrow windows keep the large on-screen keypad. */
