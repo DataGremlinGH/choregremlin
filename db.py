@@ -539,6 +539,23 @@ def _drop_started_at_column(conn):
         conn.execute("ALTER TABLE chore_logs DROP COLUMN started_at")
 
 
+def _ensure_extra_chore_column(conn):
+    """Add ``chore_logs.is_extra`` to legacy databases without losing any data.
+
+    Older installs predate extra chores and therefore have no ``is_extra``
+    column. ``ALTER TABLE ... ADD COLUMN`` only appends the column, so existing
+    chore history, streaks, balances and settings are left untouched.
+    """
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(chore_logs)").fetchall()
+    }
+    if 'is_extra' not in columns:
+        conn.execute(
+            "ALTER TABLE chore_logs "
+            "ADD COLUMN is_extra INTEGER NOT NULL DEFAULT 0"
+        )
+
+
 MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN surname TEXT",
     "ALTER TABLE users ADD COLUMN nickname TEXT",
@@ -558,7 +575,7 @@ MIGRATIONS = [
     "ALTER TABLE chores ADD COLUMN requires_hard_chores INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN pin_failures INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN pin_locked_until TEXT",
-    "ALTER TABLE chore_logs ADD COLUMN is_extra INTEGER NOT NULL DEFAULT 0",
+    _ensure_extra_chore_column,
     """CREATE TABLE IF NOT EXISTS rfid_tags (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tag_uid TEXT NOT NULL UNIQUE,
@@ -919,6 +936,10 @@ def init_db():
             if 'duplicate column' not in str(e):
                 raise
         conn.execute("INSERT INTO schema_version (version) VALUES (?)", (number,))
+    # Repair databases whose schema_version is already current but which are
+    # missing the extra-chore column (for example after a partial upgrade).
+    # This is additive only; no existing rows are deleted or rewritten.
+    _ensure_extra_chore_column(conn)
     plain_pins = conn.execute(
         "SELECT id, pin FROM users WHERE pin IS NOT NULL AND pin NOT LIKE 'scrypt:%' AND pin NOT LIKE 'pbkdf2:%'"
     ).fetchall()
