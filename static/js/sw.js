@@ -1,5 +1,6 @@
 // Chore Gremlin Service Worker
-const CACHE_NAME = 'choregremlin-v6';
+const CACHE_NAME = 'choregremlin-v8';
+const NAVIGATION_TIMEOUT = 4000;
 const STATIC_ASSETS = [
   '/',
   '/static/css/bootstrap.min.css',
@@ -9,6 +10,7 @@ const STATIC_ASSETS = [
   '/static/js/family-hub.js',
   '/static/js/live-alerts.js',
   '/static/js/kid-ticker.js',
+  '/static/js/extra-chores.js',
   '/static/js/drop-chores.js',
   '/manifest.json',
 ];
@@ -31,14 +33,36 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  // Never cache live APIs; they must always reach the server.
-  if (event.request.method !== 'GET' || url.pathname.startsWith('/api/')) return;
+  // Never cache live APIs or the SSE stream; they must always reach the
+  // server. Intercepting /events/stream here used to hold a connection slot
+  // and make kiosk navigation hang.
+  if (
+    event.request.method !== 'GET' ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/events/')
+  ) return;
 
   // Network-first for navigation, cache-first for static assets
   if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match('/'))
-    );
+    event.respondWith((async () => {
+      const fallback = async () => {
+        try {
+          return (await caches.match(event.request)) || (await caches.match('/')) || Response.error();
+        } catch (e) {
+          return Response.error();
+        }
+      };
+      try {
+        return await Promise.race([
+          fetch(event.request),
+          new Promise((resolve) => {
+            setTimeout(() => resolve(fallback()), NAVIGATION_TIMEOUT);
+          }),
+        ]);
+      } catch (e) {
+        return fallback();
+      }
+    })());
   } else {
     event.respondWith(
       caches.match(event.request).then((cached) =>

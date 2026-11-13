@@ -4,6 +4,10 @@
 
   let lastEventId = 0;
   let permissionAsked = false;
+  let source = null;
+  let reconnectTimer = null;
+  let reconnectDelay = 1000;
+  let active = true;
 
   function notificationsEnabled() {
     return window.fhNotificationsEnabled !== false;
@@ -82,20 +86,75 @@
     }
   }
 
+  function clearReconnect() {
+    if (reconnectTimer) {
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  }
+
+  function closeSource() {
+    clearReconnect();
+    if (source) {
+      try {
+        source.close();
+      } catch (e) {
+        // Already closed.
+      }
+      source = null;
+    }
+  }
+
+  function scheduleReconnect() {
+    if (!active || reconnectTimer) return;
+    if (document.visibilityState === 'hidden') return;
+    const delay = reconnectDelay;
+    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  }
+
   function connect() {
-    const source = new EventSource('/events/stream' + (lastEventId ? '?since=' + lastEventId : ''));
+    if (!active || source || !window.EventSource) return;
+    // Never hold an SSE connection while the tab is hidden; this is what
+    // previously exhausted the browser's HTTP connection pool and made
+    // kiosk navigation (Kids -> Bank) appear to freeze.
+    if (document.visibilityState === 'hidden') return;
+
+    let current;
+    try {
+      current = new EventSource(
+        '/events/stream' + (lastEventId ? '?since=' + lastEventId : '')
+      );
+    } catch (e) {
+      scheduleReconnect();
+      return;
+    }
+    source = current;
+
     ['broadcast', 'achievement', 'message'].forEach((name) => {
-      source.addEventListener(name, handleFrame);
+      current.addEventListener(name, handleFrame);
     });
-    source.addEventListener('ready', (event) => {
+    current.addEventListener('ready', (event) => {
       try {
         const payload = JSON.parse(event.data || '{}');
         const latest = payload.latest_event_id || 0;
         if (!lastEventId && latest) lastEventId = latest;
       } catch (e) {}
     });
-    source.onerror = () => {
-      // EventSource reconnects automatically; stay quiet to avoid alert spam.
+    current.onopen = () => {
+      reconnectDelay = 1000;
+    };
+    current.onerror = () => {
+      // Take over reconnection so we can back off and never leave a stale
+      // EventSource holding a connection slot.
+      try {
+        current.close();
+      } catch (e) {}
+      if (source === current) source = null;
+      scheduleReconnect();
     };
   }
 
@@ -106,6 +165,40 @@
       Notification.requestPermission().catch(() => {});
     }
   }, { once: true });
+
+  // Close the stream as soon as the page is hidden or unloaded. Browsers may
+  // keep the old document (and its EventSource) alive in the back/forward
+  // cache, which is the other half of the navigation freeze.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      closeSource();
+    } else {
+      active = true;
+      connect();
+    }
+  });
+  window.addEventListener('pagehide', () => {
+    active = false;
+    closeSource();
+  });
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    active = true;
+    connect();
+  });
+  window.addEventListener('beforeunload', closeSource);
+
+  window.fhLiveAlerts = {
+    close: closeSource,
+    reconnect: () => {
+      active = true;
+      closeSource();
+      connect();
+    },
+    get source() {
+      return source;
+    },
+  };
 
   connect();
 })();

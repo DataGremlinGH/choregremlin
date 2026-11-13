@@ -18,10 +18,37 @@ document.addEventListener('touchend', (e) => {
 // Auto-dismiss alerts after 3s
 setTimeout(() => {
   document.querySelectorAll('.fh-alert').forEach(el => {
+    if (!window.bootstrap) return;
     const alert = bootstrap.Alert.getOrCreateInstance(el);
     setTimeout(() => alert.close(), 3000);
   });
 }, 100);
+
+// Keep background content fixed while any modal is open.
+(function () {
+  const body = document.body;
+
+  const lockScroll = () => body.classList.add('fh-modal-open');
+  const unlockScroll = () => {
+    if (document.querySelector('.modal.show')) return;
+    body.classList.remove('fh-modal-open');
+  };
+
+  document.addEventListener('show.bs.modal', lockScroll);
+  document.addEventListener('shown.bs.modal', lockScroll);
+  document.addEventListener('hide.bs.modal', () => window.setTimeout(unlockScroll, 0));
+  document.addEventListener('hidden.bs.modal', () => window.setTimeout(unlockScroll, 0));
+
+  // Repair stale Bootstrap state after a bfcache restore or interrupted modal.
+  window.addEventListener('pageshow', () => {
+    if (document.querySelector('.modal.show')) return;
+    document.querySelectorAll('.modal-backdrop').forEach((el) => el.remove());
+    body.classList.remove('fh-modal-open');
+    body.classList.remove('modal-open');
+    body.style.removeProperty('overflow');
+    body.style.removeProperty('padding-right');
+  });
+})();
 
 // Responsive app shell navigation
 document.addEventListener('DOMContentLoaded', () => {
@@ -43,7 +70,9 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   if (openButton) {
-    openButton.addEventListener('click', () => setOpen(!sheet.classList.contains('show')));
+    openButton.addEventListener('click', () => {
+      setOpen(!(sheet && sheet.classList.contains('show')));
+    });
   }
   if (backdrop) backdrop.addEventListener('click', () => setOpen(false));
   document.addEventListener('keydown', (event) => {
