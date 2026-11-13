@@ -100,7 +100,8 @@ CREATE TABLE IF NOT EXISTS chore_logs (
     finished_at TEXT,
     earned_amount REAL NOT NULL DEFAULT 0,
     approved_by INTEGER REFERENCES users(id),
-    approved_at TEXT
+    approved_at TEXT,
+    is_extra INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS payments (
@@ -557,6 +558,7 @@ MIGRATIONS = [
     "ALTER TABLE chores ADD COLUMN requires_hard_chores INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN pin_failures INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN pin_locked_until TEXT",
+    "ALTER TABLE chore_logs ADD COLUMN is_extra INTEGER NOT NULL DEFAULT 0",
     """CREATE TABLE IF NOT EXISTS rfid_tags (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tag_uid TEXT NOT NULL UNIQUE,
@@ -1686,7 +1688,7 @@ def get_completed_chore_ids(user_id=None):
                MAX(cl.finished_at) AS completed_at
                FROM chore_logs cl
                JOIN chores c ON cl.chore_id = c.id
-               WHERE cl.status='completed'"""
+               WHERE cl.status='completed' AND cl.is_extra=0"""
     if user_id is not None:
         query += " AND cl.user_id=?"
         params.append(user_id)
@@ -1730,7 +1732,7 @@ def is_chore_fully_completed(chore_id):
            MAX(cl.finished_at) AS completed_at
            FROM chore_logs cl
            JOIN chores c ON cl.chore_id = c.id
-           WHERE cl.chore_id=? AND cl.status='completed'
+           WHERE cl.chore_id=? AND cl.status='completed' AND cl.is_extra=0
            GROUP BY cl.user_id, c.repeat_frequency""",
         (chore_id,)
     ).fetchall()
@@ -1791,6 +1793,85 @@ def complete_chore(user_id, chore_id):
     )
     db.commit()
     return db.execute("SELECT * FROM chore_logs WHERE id=?", (cursor.lastrowid,)).fetchone()
+
+
+def get_extra_chore_options(user_id, can_do_hard_chores=False):
+    """Return the chores a child may request as an extra, flagged with their state.
+
+    A chore that is still active/uncompleted in the child's regular list is
+    returned with ``is_active=True`` so the UI can block it. Chores that have
+    already been completed for the current cycle are offered as extras.
+    """
+    assigned_ids = get_assigned_chore_ids(user_id)
+    if assigned_ids:
+        chores = [c for c in get_all_chores(active_only=True) if c['id'] in assigned_ids]
+    else:
+        chores = get_all_chores(active_only=True)
+    active_ids = {
+        chore['id'] for chore in get_chores_for_child(user_id, can_do_hard_chores)
+    }
+    db = get_db()
+    pending_ids = {
+        row['chore_id'] for row in db.execute(
+            """SELECT chore_id FROM chore_logs
+               WHERE user_id=? AND is_extra=1 AND approved_by IS NULL""",
+            (user_id,)
+        ).fetchall()
+    }
+    options = []
+    for chore in chores:
+        if not can_do_hard_chores and chore['requires_hard_chores']:
+            continue
+        option = dict(chore)
+        option['is_active'] = chore['id'] in active_ids
+        option['pending_approval'] = chore['id'] in pending_ids
+        options.append(option)
+    options.sort(key=lambda item: (item['is_active'], item['pending_approval'], item['name'].lower()))
+    return options
+
+
+def request_extra_chore(user_id, chore_id):
+    """Log an independent extra-chore completion for parental approval.
+
+    Extra records are marked ``is_extra=1`` so they never count as the regular
+    recurring completion and therefore cannot reset the child's monthly (or
+    daily/weekly) schedule.
+    """
+    db = get_db()
+    chore = db.execute(
+        "SELECT * FROM chores WHERE id=? AND is_active=1", (chore_id,)
+    ).fetchone()
+    if not chore:
+        raise ValueError('Chore not available.')
+    user = get_user(user_id)
+    can_do_hard = bool(user and user['can_do_hard_chores'])
+    assigned_ids = get_assigned_chore_ids(user_id)
+    if assigned_ids and chore_id not in assigned_ids:
+        raise ValueError('This chore is not assigned to you.')
+    if chore['requires_hard_chores'] and not can_do_hard:
+        raise ValueError('This chore is for older kids only.')
+    active_ids = {
+        item['id'] for item in get_chores_for_child(user_id, can_do_hard)
+    }
+    if chore_id in active_ids:
+        raise ValueError('Please complete existing chore first')
+    pending = db.execute(
+        """SELECT 1 FROM chore_logs
+           WHERE user_id=? AND chore_id=? AND is_extra=1 AND approved_by IS NULL""",
+        (user_id, chore_id)
+    ).fetchone()
+    if pending:
+        raise ValueError('This extra chore is already waiting for approval.')
+    cursor = db.execute(
+        """INSERT INTO chore_logs
+           (user_id, chore_id, status, finished_at, earned_amount, is_extra)
+           VALUES (?, ?, 'completed', datetime('now'), ?, 1)""",
+        (user_id, chore_id, chore['pay_amount'])
+    )
+    db.commit()
+    return db.execute(
+        "SELECT * FROM chore_logs WHERE id=?", (cursor.lastrowid,)
+    ).fetchone()
 
 
 def start_chore(user_id, chore_id):

@@ -4,6 +4,20 @@ Phases 1 through 17 of the V2 upgrade are implemented and covered by the local t
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-11-13
+
+### Fixed
+- Kiosk navigation freeze caused by unclosed SSE connections and service-worker interception of `/events/stream`
+- Service-worker navigation now falls back to the cached shell after a short timeout instead of hanging indefinitely
+- Background scroll is locked while any Bootstrap modal is open, including the Add Custom Milestone dialog
+- Top action buttons now scroll horizontally on narrow screens instead of running off-screen
+
+### Added
+- Request Extra Chore workflow on the child kiosk, with duplicate prevention and parental approval
+- Extra chores are stored as independent records (`chore_logs.is_extra`) so they never reset or interfere with daily, weekly or monthly schedules
+- Extra-chore approvals create a separate payment and are labelled in the approval queue
+- Chore Gremlin ASCII banner is printed on server startup
+
 ## [Unreleased]
 
 ### Added

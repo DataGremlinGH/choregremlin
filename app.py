@@ -496,7 +496,9 @@ PUBLIC_ENDPOINTS = {
     'chore_icon_file', 'trust_page', 'trust_ca',
 }
 KIOSK_ENDPOINTS = {
-    'child_chores', 'kiosk_complete_chore', 'kiosk_drop_chores', 'kiosk_claim_drop_chore',
+    'child_chores', 'kiosk_complete_chore', 'kiosk_request_extra_chore',
+    'kiosk_extra_chore_options',
+    'kiosk_drop_chores', 'kiosk_claim_drop_chore',
     'kiosk_complete_drop_chore', 'kiosk_calendar', 'kiosk_add_event',
     'kiosk_rewards', 'kiosk_equip_reward',
     'kiosk_bank', 'kiosk_bank_deposit', 'kiosk_bank_withdraw', 'kiosk_loan_apply',
@@ -1115,6 +1117,68 @@ def _complete_chore_for_child(chore_id):
 @kiosk_mode()
 def kiosk_complete_chore(chore_id):
     return _complete_chore_for_child(chore_id)
+
+
+@app.route('/kiosk/chores/extra/options')
+@kiosk_mode()
+def kiosk_extra_chore_options():
+    """Return the child's permitted extra chores as JSON for the modal."""
+    child = g.child
+    options = db_module.get_extra_chore_options(
+        child['id'], child['can_do_hard_chores']
+    )
+    currency = db_module.get_currency_settings()
+    return jsonify({
+        'request_url': url_for('kiosk_request_extra_chore'),
+        'token_icon': str(currency.get('token_emoji') or ''),
+        'chores': [
+            {
+                'id': item['id'],
+                'name': item['name'],
+                'icon': item['icon'],
+                'chore_emoji': item.get('chore_emoji') or '',
+                'chore_image': (
+                    chore_image_url(item['chore_image'])
+                    if item.get('chore_image') else ''
+                ),
+                'pay_amount': float(item.get('pay_amount') or 0),
+                'is_active': bool(item['is_active']),
+                'pending_approval': bool(item['pending_approval']),
+            }
+            for item in options
+        ],
+    })
+
+
+@app.route('/kiosk/chores/extra', methods=['POST'])
+@kiosk_mode()
+def kiosk_request_extra_chore():
+    """Request an independent extra-chore payout without touching the schedule."""
+    child = g.child
+    chore_id = request.form.get('chore_id', type=int)
+    if not chore_id:
+        hardware_beep('error')
+        flash('Choose a chore to request.', 'warning')
+        return redirect(url_for('child_chores'))
+    try:
+        db_module.request_extra_chore(child['id'], chore_id)
+    except ValueError as exc:
+        hardware_beep('error')
+        flash(str(exc), 'warning')
+        return redirect(url_for('child_chores'))
+    chore = db_module.get_chore(chore_id)
+    name = chore['name'] if chore else 'Extra chore'
+    db_module.log_activity(
+        child['id'], 'extra_chore_request',
+        f'Requested extra chore: {name}'
+    )
+    hardware_beep('success')
+    flash(
+        f'Extra chore "{name}" sent to a parent for approval. '
+        'Your regular schedule has not changed.',
+        'success'
+    )
+    return redirect(url_for('child_chores'))
 
 
 @app.route('/kiosk/logout')
@@ -3373,10 +3437,14 @@ def approvals():
 def approve_chore(log_id):
     log = db_module.approve_chore(log_id, session.get('user_id'))
     if log:
+        chore = db_module.get_chore(log['chore_id'])
+        label = chore['name'] if chore else 'Chore'
+        if log['is_extra']:
+            label += ' (extra)'
         db_module.create_payment(
             log['user_id'], log['earned_amount'],
             ptype='earning',
-            description=f"Earned: {log['chore_name'] if 'chore_name' in log.keys() else 'Chore'}",
+            description=f"Earned: {label}",
             log_id=log_id,
             created_by=session.get('user_id')
         )
@@ -3687,7 +3755,28 @@ def init_db_command():
     print('Initialized the database.')
 
 
+# --- Startup banner ---
+
+STARTUP_BANNER = r"""
+   ________                       ______                    ___
+  / ____/ /_  ____  ________     / ____/_______  ____ ___  / (_)___
+ / /   / __ \/ __ \/ ___/ _ \   / / __/ ___/ _ \/ __ `__ \/ / / __ \
+/ /___/ / / / /_/ / /  /  __/  / /_/ / /  /  __/ / / / / / / / / / /
+\____/_/ /_/\____/_/   \___/   \____/_/   \___/_/ /_/ /_/_/_/_/ /_/
+"""
+
+
+def print_startup_banner(port):
+    """Print the Chore Gremlin terminal graphic on server startup."""
+    print(STARTUP_BANNER, flush=True)
+    print('  The little gremlin that gets the chores done', flush=True)
+    print(f'  Chore Gremlin is running at http://127.0.0.1:{port}', flush=True)
+    print('  Press Ctrl+C to stop.', flush=True)
+    print('', flush=True)
+
+
 if __name__ == '__main__':
-    db_module.init_db()
     port = int(os.environ.get('PORT', DEFAULT_PORT))
+    print_startup_banner(port)
+    db_module.init_db()
     app.run(host=os.environ.get('CHOREGREMLIN_BIND', '0.0.0.0'), port=port, debug=False)
